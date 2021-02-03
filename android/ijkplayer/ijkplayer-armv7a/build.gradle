@@ -17,13 +17,13 @@ android {
         }
     }
     sourceSets.main {
-        jniLibs.srcDirs 'src/main/libs'
+        jniLibs.srcDirs 'src/main/jniLibs'
         jni.srcDirs = [] // This prevents the auto generation of Android.mk
     }
 }
 
 dependencies {
-    compile fileTree(dir: 'libs', include: ['*.jar'])
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
 }
 
 apply from: new File(rootProject.projectDir, "tools/gradle-on-demand.gradle");
