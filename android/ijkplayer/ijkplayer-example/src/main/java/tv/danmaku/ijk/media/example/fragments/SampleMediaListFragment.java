@@ -20,6 +20,7 @@ package tv.danmaku.ijk.media.example.fragments;
 import android.app.Activity;
 import android.content.Context;
 import android.os.Bundle;
+import android.os.Environment;
 import android.support.annotation.Nullable;
 import android.support.v4.app.Fragment;
 import android.view.LayoutInflater;
@@ -69,6 +70,8 @@ public class SampleMediaListFragment extends Fragment {
         });
 
         mAdapter.addItem("rtmp://121.196.157.174:1935/myapp/mystream", "aliyun rtmp");
+        mAdapter.addItem(String.format("%s/wuwenxidong.mp4", Environment.getExternalStorageDirectory()), "local movie:wuwenxidong");
+        mAdapter.addItem("rtmp://58.200.131.2:1935/livetv/cctv6hd", "cctv6");
         mAdapter.addItem("http://devimages.apple.com.edgekey.net/streaming/examples/bipbop_4x3/bipbop_4x3_variant.m3u8", "bipbop basic master playlist");
         mAdapter.addItem("http://devimages.apple.com.edgekey.net/streaming/examples/bipbop_4x3/gear1/prog_index.m3u8", "bipbop basic 400x300 @ 232 kbps");
         mAdapter.addItem("http://devimages.apple.com.edgekey.net/streaming/examples/bipbop_4x3/gear2/prog_index.m3u8", "bipbop basic 640x480 @ 650 kbps");
