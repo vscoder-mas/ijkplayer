@@ -23,14 +23,15 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
-    productFlavors {
-        all32 { minSdkVersion 9 }
-        all64 { minSdkVersion 21 }
-        // armv5 {}
-        // armv7a {}
-        // arm64 { minSdkVersion 21 }
-        // x86 {}
-    }
+
+//    productFlavors {
+//        all32 { minSdkVersion 9 }
+//        all64 { minSdkVersion 21 }
+//        // armv5 {}
+//        // armv7a {}
+//        // arm64 { minSdkVersion 21 }
+//        // x86 {}
+//    }
 }
 
 dependencies {
