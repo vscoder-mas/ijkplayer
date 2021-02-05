@@ -18,6 +18,7 @@
 package tv.danmaku.ijk.media.example.activities;
 
 import android.os.Bundle;
+import android.os.Environment;
 import android.support.v4.app.Fragment;
 import android.support.v4.app.FragmentTransaction;
 import android.text.TextUtils;
@@ -44,11 +45,12 @@ public class FileExplorerActivity extends AppActivity {
             mSettings = new Settings(this);
         }
 
-        String lastDirectory = mSettings.getLastDirectory();
+        String lastDirectory = Environment.getExternalStorageDirectory().getPath();
         if (!TextUtils.isEmpty(lastDirectory) && new File(lastDirectory).isDirectory())
             doOpenDirectory(lastDirectory, false);
-        else
+        else {
             doOpenDirectory("/", false);
+        }
     }
 
     @Override
