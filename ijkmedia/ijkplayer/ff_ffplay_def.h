@@ -303,7 +303,7 @@ typedef struct VideoState {
     Decoder viddec;
     Decoder subdec;
 
-    int audio_stream;
+    int audio_stream_index;
 
     int av_sync_type;
     void *handle;
@@ -354,14 +354,14 @@ typedef struct VideoState {
     SDL_Texture *sub_texture;
 #endif
 
-    int subtitle_stream;
+    int subtitle_stream_index;
     AVStream *subtitle_st;
     PacketQueue subtitleq;
 
     double frame_timer;
     double frame_last_returned_time;
     double frame_last_filter_delay;
-    int video_stream;
+    int video_stream_index;
     AVStream *video_st;
     PacketQueue videoq;
     double max_frame_duration;      // maximum duration of a frame - above this, we consider the jump a timestamp discontinuity

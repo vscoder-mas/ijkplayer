@@ -239,7 +239,7 @@ typedef struct VideoState {
     Decoder viddec;                 // 视频解码器
     Decoder subdec;                 // 字幕解码器
 
-    int audio_stream;               // 音频流索引
+    int audio_stream_index;               // 音频流索引
 
     int av_sync_type;
 
@@ -284,14 +284,14 @@ typedef struct VideoState {
     SDL_Texture *sub_texture;
     SDL_Texture *vid_texture;
 
-    int subtitle_stream;                // 字幕流索引
+    int subtitle_stream_index;                // 字幕流索引
     AVStream *subtitle_st;              // 字幕流
     PacketQueue subtitleq;              // 字幕packet队列
 
     double frame_timer;                 // 记录最后一帧播放的时刻
     double frame_last_returned_time;
     double frame_last_filter_delay;
-    int video_stream;                   // 视频流索引
+    int video_stream_index;                   // 视频流索引
     AVStream *video_st;                 // 视频流
     PacketQueue videoq;                 // 视频队列
     double max_frame_duration;      // maximum duration of a frame - above this, we consider the jump a timestamp discontinuity
@@ -433,8 +433,7 @@ int64_t get_valid_channel_layout(int64_t channel_layout, int channels)
         return 0;
 }
 
-static int packet_queue_put_private(PacketQueue *q, AVPacket *pkt)
-{
+static int packet_queue_put_private(PacketQueue *q, AVPacket *pkt) {
     MyAVPacketList *pkt1;
 
     if (q->abort_request)
@@ -462,10 +461,8 @@ static int packet_queue_put_private(PacketQueue *q, AVPacket *pkt)
     return 0;
 }
 
-static int packet_queue_put(PacketQueue *q, AVPacket *pkt)
-{
+static int packet_queue_put(PacketQueue *q, AVPacket *pkt) {
     int ret;
-
     SDL_LockMutex(q->mutex);
     ret = packet_queue_put_private(q, pkt);
     SDL_UnlockMutex(q->mutex);
@@ -476,8 +473,7 @@ static int packet_queue_put(PacketQueue *q, AVPacket *pkt)
     return ret;
 }
 
-static int packet_queue_put_nullpacket(PacketQueue *q, int stream_index)
-{
+static int packet_queue_put_nullpacket(PacketQueue *q, int stream_index) {
     AVPacket pkt1, *pkt = &pkt1;
     av_init_packet(pkt);
     pkt->data = NULL;
@@ -540,8 +536,7 @@ static void packet_queue_abort(PacketQueue *q)
     SDL_UnlockMutex(q->mutex);
 }
 
-static void packet_queue_start(PacketQueue *q)
-{
+static void packet_queue_start(PacketQueue *q) {
     SDL_LockMutex(q->mutex);
     q->abort_request = 0;
     packet_queue_put_private(q, &flush_pkt);
@@ -709,7 +704,8 @@ static int frame_queue_init(FrameQueue *f, PacketQueue *pktq, int max_size, int 
     }
     f->pktq = pktq;
     f->max_size = FFMIN(max_size, FRAME_QUEUE_SIZE);
-    f->keep_last = !!keep_last;
+    // f->keep_last = !!keep_last;
+    f->keep_last = 0;
     //先将预存储的Frame数组的每个Frame，分配内存空间 av_frame_alloc
     for (i = 0; i < f->max_size; i++)
         if (!(f->queue[i].frame = av_frame_alloc()))
@@ -1251,15 +1247,15 @@ static void stream_component_close(VideoState *is, int stream_index)
     switch (codecpar->codec_type) {
     case AVMEDIA_TYPE_AUDIO:
         is->audio_st = NULL;
-        is->audio_stream = -1;
+        is->audio_stream_index = -1;
         break;
     case AVMEDIA_TYPE_VIDEO:
         is->video_st = NULL;
-        is->video_stream = -1;
+        is->video_stream_index = -1;
         break;
     case AVMEDIA_TYPE_SUBTITLE:
         is->subtitle_st = NULL;
-        is->subtitle_stream = -1;
+        is->subtitle_stream_index = -1;
         break;
     default:
         break;
@@ -1273,12 +1269,12 @@ static void stream_close(VideoState *is)
     SDL_WaitThread(is->read_tid, NULL);
 
     /* close each stream */
-    if (is->audio_stream >= 0)
-        stream_component_close(is, is->audio_stream);
-    if (is->video_stream >= 0)
-        stream_component_close(is, is->video_stream);
-    if (is->subtitle_stream >= 0)
-        stream_component_close(is, is->subtitle_stream);
+    if (is->audio_stream_index >= 0)
+        stream_component_close(is, is->audio_stream_index);
+    if (is->video_stream_index >= 0)
+        stream_component_close(is, is->video_stream_index);
+    if (is->subtitle_stream_index >= 0)
+        stream_component_close(is, is->subtitle_stream_index);
 
     avformat_close_input(&is->ic);
 
@@ -1464,11 +1460,11 @@ static double get_master_clock(VideoState *is)
 }
 
 static void check_external_clock_speed(VideoState *is) {
-   if (is->video_stream >= 0 && is->videoq.nb_packets <= EXTERNAL_CLOCK_MIN_FRAMES ||
-       is->audio_stream >= 0 && is->audioq.nb_packets <= EXTERNAL_CLOCK_MIN_FRAMES) {
+   if (is->video_stream_index >= 0 && is->videoq.nb_packets <= EXTERNAL_CLOCK_MIN_FRAMES ||
+       is->audio_stream_index >= 0 && is->audioq.nb_packets <= EXTERNAL_CLOCK_MIN_FRAMES) {
        set_clock_speed(&is->extclk, FFMAX(EXTERNAL_CLOCK_SPEED_MIN, is->extclk.speed - EXTERNAL_CLOCK_SPEED_STEP));
-   } else if ((is->video_stream < 0 || is->videoq.nb_packets > EXTERNAL_CLOCK_MAX_FRAMES) &&
-              (is->audio_stream < 0 || is->audioq.nb_packets > EXTERNAL_CLOCK_MAX_FRAMES)) {
+   } else if ((is->video_stream_index < 0 || is->videoq.nb_packets > EXTERNAL_CLOCK_MAX_FRAMES) &&
+              (is->audio_stream_index < 0 || is->audioq.nb_packets > EXTERNAL_CLOCK_MAX_FRAMES)) {
        set_clock_speed(&is->extclk, FFMIN(EXTERNAL_CLOCK_SPEED_MAX, is->extclk.speed + EXTERNAL_CLOCK_SPEED_STEP));
    } else {
        double speed = is->extclk.speed;
@@ -1598,6 +1594,7 @@ static void video_refresh(void *opaque, double *remaining_time) {
         *remaining_time = FFMIN(*remaining_time, is->last_vis_time + rdftspeed - time);
     }
 
+    //如果有视频流
     if (is->video_st) {
 retry:
         if (frame_queue_nb_remaining(&is->pictq) == 0) {    // 所有帧已显示
@@ -1650,6 +1647,7 @@ retry:
                 }
             }
 
+            //如果有字幕流
             if (is->subtitle_st) {
                     while (frame_queue_nb_remaining(&is->subpq) > 0) {
                         sp = frame_queue_peek(&is->subpq);
@@ -2025,8 +2023,8 @@ end:
 }
 #endif  /* CONFIG_AVFILTER */
 
-static int audio_thread(void *arg)
-{
+//从音频packet_queue中取数据，解码后放入音频frame_queue
+static int audio_thread(void *arg) {
     VideoState *is = arg;
     AVFrame *frame = av_frame_alloc();
     Frame *af;
@@ -2112,8 +2110,7 @@ static int audio_thread(void *arg)
     return ret;
 }
 
-static int decoder_start(Decoder *d, int (*fn)(void *), void *arg)
-{
+static int decoder_start(Decoder *d, int (*fn)(void *), void *arg) {
     packet_queue_start(d->queue);
     d->decoder_tid = SDL_CreateThread(fn, "decoder", arg);
     if (!d->decoder_tid) {
@@ -2567,8 +2564,7 @@ static int audio_open(void *opaque, int64_t wanted_channel_layout, int wanted_nb
 }
 
 /* open a given stream. Return 0 if OK */
-static int stream_component_open(VideoState *is, int stream_index)
-{
+static int stream_component_open(VideoState *is, int stream_index) {
     AVFormatContext *ic = is->ic;
     AVCodecContext *avctx;
     AVCodec *codec;
@@ -2665,6 +2661,7 @@ static int stream_component_open(VideoState *is, int stream_index)
         /* prepare audio output */
         if ((ret = audio_open(is, channel_layout, nb_channels, sample_rate, &is->audio_tgt)) < 0)
             goto fail;
+
         is->audio_hw_buf_size = ret;
         is->audio_src = is->audio_tgt;
         is->audio_buf_size  = 0;
@@ -2677,7 +2674,7 @@ static int stream_component_open(VideoState *is, int stream_index)
            we correct audio sync only if larger than this threshold */
         is->audio_diff_threshold = (double)(is->audio_hw_buf_size) / is->audio_tgt.bytes_per_sec;
 
-        is->audio_stream = stream_index;
+        is->audio_stream_index = stream_index;
         is->audio_st = ic->streams[stream_index];
 
         decoder_init(&is->auddec, avctx, &is->audioq, is->continue_read_thread);
@@ -2685,12 +2682,14 @@ static int stream_component_open(VideoState *is, int stream_index)
             is->auddec.start_pts = is->audio_st->start_time;
             is->auddec.start_pts_tb = is->audio_st->time_base;
         }
+
+        //创建audio_thread
         if ((ret = decoder_start(&is->auddec, audio_thread, is)) < 0)
             goto out;
         SDL_PauseAudioDevice(audio_dev, 0);
         break;
     case AVMEDIA_TYPE_VIDEO:
-        is->video_stream = stream_index;
+        is->video_stream_index = stream_index;
         is->video_st = ic->streams[stream_index];
 
         decoder_init(&is->viddec, avctx, &is->videoq, is->continue_read_thread);
@@ -2699,7 +2698,7 @@ static int stream_component_open(VideoState *is, int stream_index)
         is->queue_attachments_req = 1;
         break;
     case AVMEDIA_TYPE_SUBTITLE:
-        is->subtitle_stream = stream_index;
+        is->subtitle_stream_index = stream_index;
         is->subtitle_st = ic->streams[stream_index];
 
         decoder_init(&is->subdec, avctx, &is->subtitleq, is->continue_read_thread);
@@ -2719,8 +2718,7 @@ out:
     return ret;
 }
 
-static int decode_interrupt_cb(void *ctx)
-{
+static int decode_interrupt_cb(void *ctx) {
     VideoState *is = ctx;
     return is->abort_request;
 }
@@ -2749,8 +2747,8 @@ static int is_realtime(AVFormatContext *s)
 }
 
 /* this thread gets the stream from the disk or the network */
-static int read_thread(void *arg)
-{
+//解复用线程读取视频文件，将取到的packet根据类型(音频、视频、字幕)存入不同是packet队列中
+static int read_thread(void *arg) {
     VideoState *is = arg;
     AVFormatContext *ic = NULL;
     int err, i, ret;
@@ -2770,9 +2768,9 @@ static int read_thread(void *arg)
     }
 
     memset(st_index, -1, sizeof(st_index));
-    is->last_video_stream = is->video_stream = -1;
-    is->last_audio_stream = is->audio_stream = -1;
-    is->last_subtitle_stream = is->subtitle_stream = -1;
+    is->last_video_stream = is->video_stream_index = -1;
+    is->last_audio_stream = is->audio_stream_index = -1;
+    is->last_subtitle_stream = is->subtitle_stream_index = -1;
     is->eof = 0;
 
     ic = avformat_alloc_context();
@@ -2781,12 +2779,15 @@ static int read_thread(void *arg)
         ret = AVERROR(ENOMEM);
         goto fail;
     }
+    
+    // 中断回调机制, 为底层I/O层提供一个处理接口，比如中止IO操作
     ic->interrupt_callback.callback = decode_interrupt_cb;
     ic->interrupt_callback.opaque = is;
     if (!av_dict_get(format_opts, "scan_all_pmts", NULL, AV_DICT_MATCH_CASE)) {
         av_dict_set(&format_opts, "scan_all_pmts", "1", AV_DICT_DONT_OVERWRITE);
         scan_all_pmts_set = 1;
     }
+
     err = avformat_open_input(&ic, is->filename, is->iformat, &format_opts);
     if (err < 0) {
         print_error(is->filename, err);
@@ -2811,7 +2812,8 @@ static int read_thread(void *arg)
     if (find_stream_info) {
         AVDictionary **opts = setup_find_stream_info_opts(ic, codec_opts);
         int orig_nb_streams = ic->nb_streams;
-
+        // 1.2 搜索流信息：读取一段视频文件数据，尝试解码，将取到的流信息填入ic->streams
+        //     ic->streams是一个指针数组，数组大小是ic->nb_streams
         err = avformat_find_stream_info(ic, opts);
 
         for (i = 0; i < orig_nb_streams; i++)
@@ -2872,17 +2874,24 @@ static int read_thread(void *arg)
         }
     }
 
+    // 2. 查找用于解码处理的流
+    // 2.1 将对应的stream_index存入st_index[]数组
     if (!video_disable)
+        //视频流
         st_index[AVMEDIA_TYPE_VIDEO] =
             av_find_best_stream(ic, AVMEDIA_TYPE_VIDEO,
                                 st_index[AVMEDIA_TYPE_VIDEO], -1, NULL, 0);
+
     if (!audio_disable)
+        //音频流
         st_index[AVMEDIA_TYPE_AUDIO] =
             av_find_best_stream(ic, AVMEDIA_TYPE_AUDIO,
                                 st_index[AVMEDIA_TYPE_AUDIO],
                                 st_index[AVMEDIA_TYPE_VIDEO],
                                 NULL, 0);
+
     if (!video_disable && !subtitle_disable)
+        //字幕流
         st_index[AVMEDIA_TYPE_SUBTITLE] =
             av_find_best_stream(ic, AVMEDIA_TYPE_SUBTITLE,
                                 st_index[AVMEDIA_TYPE_SUBTITLE],
@@ -2891,17 +2900,25 @@ static int read_thread(void *arg)
                                  st_index[AVMEDIA_TYPE_VIDEO]),
                                 NULL, 0);
 
+    //SDL显示模式
     is->show_mode = show_mode;
     if (st_index[AVMEDIA_TYPE_VIDEO] >= 0) {
         AVStream *st = ic->streams[st_index[AVMEDIA_TYPE_VIDEO]];
         AVCodecParameters *codecpar = st->codecpar;
+        // 根据流和帧宽高比猜测帧的样本宽高比
+        // 由于帧宽高比由解码器设置，但流宽高比由解复用器设置，因此这两者可能不相等。此函数会尝试返回待显示帧应当使用的宽高比值
+        // 基本逻辑是优先使用流宽高比(前提是值是合理的)，其次使用帧宽高比。这样，流宽高比(容器设置，易于修改)可以覆盖帧宽高比
         AVRational sar = av_guess_sample_aspect_ratio(ic, st, NULL);
-        if (codecpar->width)
+        if (codecpar->width) {
+            // 设置显示窗口的大小和宽高比, 单独判断一个width就可以了
             set_default_window_size(codecpar->width, codecpar->height, sar);
+        }
     }
 
+    // 3. 创建对应流的解码线程
     /* open the streams */
     if (st_index[AVMEDIA_TYPE_AUDIO] >= 0) {
+        //3.1 创建音频解码线程
         stream_component_open(is, st_index[AVMEDIA_TYPE_AUDIO]);
     }
 
@@ -2910,13 +2927,15 @@ static int read_thread(void *arg)
         ret = stream_component_open(is, st_index[AVMEDIA_TYPE_VIDEO]);
     }
     if (is->show_mode == SHOW_MODE_NONE)
+        //3.2 创建视频解码线程
         is->show_mode = ret >= 0 ? SHOW_MODE_VIDEO : SHOW_MODE_RDFT;
 
     if (st_index[AVMEDIA_TYPE_SUBTITLE] >= 0) {
+        // 3.3 创建字幕解码线程
         stream_component_open(is, st_index[AVMEDIA_TYPE_SUBTITLE]);
     }
 
-    if (is->video_stream < 0 && is->audio_stream < 0) {
+    if (is->video_stream_index < 0 && is->audio_stream_index < 0) {
         av_log(NULL, AV_LOG_FATAL, "Failed to open file '%s' or configure filtergraph\n",
                is->filename);
         ret = -1;
@@ -2926,6 +2945,7 @@ static int read_thread(void *arg)
     if (infinite_buffer < 0 && is->realtime)
         infinite_buffer = 1;
 
+    // 4. 解复用处理
     for (;;) {
         if (is->abort_request)
             break;
@@ -2946,6 +2966,8 @@ static int read_thread(void *arg)
             continue;
         }
 #endif
+
+        //seek操作
         if (is->seek_req) {
             int64_t seek_target = is->seek_pos;
             int64_t seek_min    = is->seek_rel > 0 ? seek_target - is->seek_rel + 2: INT64_MIN;
@@ -2958,15 +2980,15 @@ static int read_thread(void *arg)
                 av_log(NULL, AV_LOG_ERROR,
                        "%s: error while seeking\n", is->ic->url);
             } else {
-                if (is->audio_stream >= 0) {
+                if (is->audio_stream_index >= 0) {
                     packet_queue_flush(&is->audioq);
                     packet_queue_put(&is->audioq, &flush_pkt);
                 }
-                if (is->subtitle_stream >= 0) {
+                if (is->subtitle_stream_index >= 0) {
                     packet_queue_flush(&is->subtitleq);
                     packet_queue_put(&is->subtitleq, &flush_pkt);
                 }
-                if (is->video_stream >= 0) {
+                if (is->video_stream_index >= 0) {
                     packet_queue_flush(&is->videoq);
                     packet_queue_put(&is->videoq, &flush_pkt);
                 }
@@ -2982,13 +3004,14 @@ static int read_thread(void *arg)
             if (is->paused)
                 step_to_next_frame(is);
         }
+
         if (is->queue_attachments_req) {
             if (is->video_st && is->video_st->disposition & AV_DISPOSITION_ATTACHED_PIC) {
                 AVPacket copy = { 0 };
                 if ((ret = av_packet_ref(&copy, &is->video_st->attached_pic)) < 0)
                     goto fail;
                 packet_queue_put(&is->videoq, &copy);
-                packet_queue_put_nullpacket(&is->videoq, is->video_stream);
+                packet_queue_put_nullpacket(&is->videoq, is->video_stream_index);
             }
             is->queue_attachments_req = 0;
         }
@@ -2996,15 +3019,16 @@ static int read_thread(void *arg)
         /* if the queue are full, no need to read more */
         if (infinite_buffer<1 &&
               (is->audioq.size + is->videoq.size + is->subtitleq.size > MAX_QUEUE_SIZE
-            || (stream_has_enough_packets(is->audio_st, is->audio_stream, &is->audioq) &&
-                stream_has_enough_packets(is->video_st, is->video_stream, &is->videoq) &&
-                stream_has_enough_packets(is->subtitle_st, is->subtitle_stream, &is->subtitleq)))) {
+            || (stream_has_enough_packets(is->audio_st, is->audio_stream_index, &is->audioq) &&
+                stream_has_enough_packets(is->video_st, is->video_stream_index, &is->videoq) &&
+                stream_has_enough_packets(is->subtitle_st, is->subtitle_stream_index, &is->subtitleq)))) {
             /* wait 10 ms */
             SDL_LockMutex(wait_mutex);
             SDL_CondWaitTimeout(is->continue_read_thread, wait_mutex, 10);
             SDL_UnlockMutex(wait_mutex);
             continue;
         }
+
         if (!is->paused &&
             (!is->audio_st || (is->auddec.finished == is->audioq.serial && frame_queue_nb_remaining(&is->sampq) == 0)) &&
             (!is->video_st || (is->viddec.finished == is->videoq.serial && frame_queue_nb_remaining(&is->pictq) == 0))) {
@@ -3015,19 +3039,28 @@ static int read_thread(void *arg)
                 goto fail;
             }
         }
+
+        // 4.1 从输入文件中读取一个packet
         ret = av_read_frame(ic, pkt);
         if (ret < 0) {
             if ((ret == AVERROR_EOF || avio_feof(ic->pb)) && !is->eof) {
-                if (is->video_stream >= 0)
-                    packet_queue_put_nullpacket(&is->videoq, is->video_stream);
-                if (is->audio_stream >= 0)
-                    packet_queue_put_nullpacket(&is->audioq, is->audio_stream);
-                if (is->subtitle_stream >= 0)
-                    packet_queue_put_nullpacket(&is->subtitleq, is->subtitle_stream);
+                if (is->video_stream_index >= 0) {
+                    packet_queue_put_nullpacket(&is->videoq, is->video_stream_index);
+                }
+                if (is->audio_stream_index >= 0) {
+                    packet_queue_put_nullpacket(&is->audioq, is->audio_stream_index);
+                }
+                if (is->subtitle_stream_index >= 0) {
+                    packet_queue_put_nullpacket(&is->subtitleq, is->subtitle_stream_index);
+                }
                 is->eof = 1;
             }
-            if (ic->pb && ic->pb->error)
+
+            if (ic->pb && ic->pb->error) {
+                //出错则退出当前线程
                 break;
+            }
+
             SDL_LockMutex(wait_mutex);
             SDL_CondWaitTimeout(is->continue_read_thread, wait_mutex, 10);
             SDL_UnlockMutex(wait_mutex);
@@ -3035,7 +3068,9 @@ static int read_thread(void *arg)
         } else {
             is->eof = 0;
         }
+
         /* check if packet is in play range specified by user, then queue, otherwise discard */
+        // 4.2 判断当前packet是否在播放范围内，是则入列，否则丢弃
         stream_start_time = ic->streams[pkt->stream_index]->start_time;
         pkt_ts = pkt->pts == AV_NOPTS_VALUE ? pkt->dts : pkt->pts;
         pkt_in_play_range = duration == AV_NOPTS_VALUE ||
@@ -3043,12 +3078,14 @@ static int read_thread(void *arg)
                 av_q2d(ic->streams[pkt->stream_index]->time_base) -
                 (double)(start_time != AV_NOPTS_VALUE ? start_time : 0) / 1000000
                 <= ((double)duration / 1000000);
-        if (pkt->stream_index == is->audio_stream && pkt_in_play_range) {
+
+        // 4.3 根据当前packet类型(音频、视频、字幕)，将其存入对应的packet队列                
+        if (pkt->stream_index == is->audio_stream_index && pkt_in_play_range) {
             packet_queue_put(&is->audioq, pkt);
-        } else if (pkt->stream_index == is->video_stream && pkt_in_play_range
+        } else if (pkt->stream_index == is->video_stream_index && pkt_in_play_range
                    && !(is->video_st->disposition & AV_DISPOSITION_ATTACHED_PIC)) {
             packet_queue_put(&is->videoq, pkt);
-        } else if (pkt->stream_index == is->subtitle_stream && pkt_in_play_range) {
+        } else if (pkt->stream_index == is->subtitle_stream_index && pkt_in_play_range) {
             packet_queue_put(&is->subtitleq, pkt);
         } else {
             av_packet_unref(pkt);
@@ -3086,13 +3123,17 @@ static VideoState *stream_open(const char *filename, AVInputFormat *iformat)
     is->xleft   = 0;
 
     /* start video display */
+    //初始化视频frame队列
     if (frame_queue_init(&is->pictq, &is->videoq, VIDEO_PICTURE_QUEUE_SIZE, 1) < 0)
         goto fail;
+    //初始化字幕frame队列
     if (frame_queue_init(&is->subpq, &is->subtitleq, SUBPICTURE_QUEUE_SIZE, 0) < 0)
         goto fail;
+    //初始化音频frame队列
     if (frame_queue_init(&is->sampq, &is->audioq, SAMPLE_QUEUE_SIZE, 1) < 0)
         goto fail;
 
+    //初始化视频队列/字幕队列/音频队列
     if (packet_queue_init(&is->videoq) < 0 ||
         packet_queue_init(&is->audioq) < 0 ||
         packet_queue_init(&is->subtitleq) < 0)
@@ -3103,6 +3144,7 @@ static VideoState *stream_open(const char *filename, AVInputFormat *iformat)
         goto fail;
     }
 
+    //初始化视频/音频/字幕时钟
     init_clock(&is->vidclk, &is->videoq.serial);
     init_clock(&is->audclk, &is->audioq.serial);
     init_clock(&is->extclk, &is->extclk.serial);
@@ -3113,8 +3155,11 @@ static VideoState *stream_open(const char *filename, AVInputFormat *iformat)
         av_log(NULL, AV_LOG_WARNING, "-volume=%d > 100, setting to 100\n", startup_volume);
     startup_volume = av_clip(startup_volume, 0, 100);
     startup_volume = av_clip(SDL_MIX_MAXVOLUME * startup_volume / 100, 0, SDL_MIX_MAXVOLUME);
+    //初始化音量
     is->audio_volume = startup_volume;
+    //初始化是否静音
     is->muted = 0;
+    //初始化音视频同步方式
     is->av_sync_type = av_sync_type;
     is->read_tid     = SDL_CreateThread(read_thread, "read_thread", is);
     if (!is->read_tid) {
@@ -3137,18 +3182,18 @@ static void stream_cycle_channel(VideoState *is, int codec_type)
 
     if (codec_type == AVMEDIA_TYPE_VIDEO) {
         start_index = is->last_video_stream;
-        old_index = is->video_stream;
+        old_index = is->video_stream_index;
     } else if (codec_type == AVMEDIA_TYPE_AUDIO) {
         start_index = is->last_audio_stream;
-        old_index = is->audio_stream;
+        old_index = is->audio_stream_index;
     } else {
         start_index = is->last_subtitle_stream;
-        old_index = is->subtitle_stream;
+        old_index = is->subtitle_stream_index;
     }
     stream_index = start_index;
 
-    if (codec_type != AVMEDIA_TYPE_VIDEO && is->video_stream != -1) {
-        p = av_find_program_from_stream(ic, NULL, is->video_stream);
+    if (codec_type != AVMEDIA_TYPE_VIDEO && is->video_stream_index != -1) {
+        p = av_find_program_from_stream(ic, NULL, is->video_stream_index);
         if (p) {
             nb_streams = p->nb_stream_indexes;
             for (start_index = 0; start_index < nb_streams; start_index++)
@@ -3223,6 +3268,9 @@ static void toggle_audio_display(VideoState *is)
     }
 }
 
+/**
+ * SDL_event队列为空，则在while循环中播放视频帧。否则从队列头部取一个event，退出当前函数，在上级函数中处理event
+ */ 
 static void refresh_loop_wait_event(VideoState *is, SDL_Event *event) {
     double remaining_time = 0.0;
     SDL_PumpEvents();
@@ -3274,7 +3322,9 @@ static void event_loop(VideoState *cur_stream) {
 
     for (;;) {
         double x;
+        //SDL_event队列为空，则在while循环中播放视频帧。否则从队列头部取一个event，退出当前函数，在上级函数中处理event
         refresh_loop_wait_event(cur_stream, &event);
+        // SDL事件处理
         switch (event.type) {
         case SDL_KEYDOWN:
             if (exit_on_keydown || event.key.keysym.sym == SDLK_ESCAPE || event.key.keysym.sym == SDLK_q) {
@@ -3285,107 +3335,107 @@ static void event_loop(VideoState *cur_stream) {
             if (!cur_stream->width)
                 continue;
             switch (event.key.keysym.sym) {
-            case SDLK_f:
-                toggle_full_screen(cur_stream);
-                cur_stream->force_refresh = 1;
-                break;
-            case SDLK_p:
-            case SDLK_SPACE:
-                toggle_pause(cur_stream);
-                break;
-            case SDLK_m:
-                toggle_mute(cur_stream);
-                break;
-            case SDLK_KP_MULTIPLY:
-            case SDLK_0:
-                update_volume(cur_stream, 1, SDL_VOLUME_STEP);
-                break;
-            case SDLK_KP_DIVIDE:
-            case SDLK_9:
-                update_volume(cur_stream, -1, SDL_VOLUME_STEP);
-                break;
-            case SDLK_s: // S: Step to next frame
-                step_to_next_frame(cur_stream);
-                break;
-            case SDLK_a:
-                stream_cycle_channel(cur_stream, AVMEDIA_TYPE_AUDIO);
-                break;
-            case SDLK_v:
-                stream_cycle_channel(cur_stream, AVMEDIA_TYPE_VIDEO);
-                break;
-            case SDLK_c:
-                stream_cycle_channel(cur_stream, AVMEDIA_TYPE_VIDEO);
-                stream_cycle_channel(cur_stream, AVMEDIA_TYPE_AUDIO);
-                stream_cycle_channel(cur_stream, AVMEDIA_TYPE_SUBTITLE);
-                break;
-            case SDLK_t:
-                stream_cycle_channel(cur_stream, AVMEDIA_TYPE_SUBTITLE);
-                break;
-            case SDLK_w:
-#if CONFIG_AVFILTER
-                if (cur_stream->show_mode == SHOW_MODE_VIDEO && cur_stream->vfilter_idx < nb_vfilters - 1) {
-                    if (++cur_stream->vfilter_idx >= nb_vfilters)
-                        cur_stream->vfilter_idx = 0;
-                } else {
-                    cur_stream->vfilter_idx = 0;
-                    toggle_audio_display(cur_stream);
-                }
-#else
-                toggle_audio_display(cur_stream);
-#endif
-                break;
-            case SDLK_PAGEUP:
-                if (cur_stream->ic->nb_chapters <= 1) {
-                    incr = 600.0;
-                    goto do_seek;
-                }
-                seek_chapter(cur_stream, 1);
-                break;
-            case SDLK_PAGEDOWN:
-                if (cur_stream->ic->nb_chapters <= 1) {
-                    incr = -600.0;
-                    goto do_seek;
-                }
-                seek_chapter(cur_stream, -1);
-                break;
-            case SDLK_LEFT:
-                incr = seek_interval ? -seek_interval : -10.0;
-                goto do_seek;
-            case SDLK_RIGHT:
-                incr = seek_interval ? seek_interval : 10.0;
-                goto do_seek;
-            case SDLK_UP:
-                incr = 60.0;
-                goto do_seek;
-            case SDLK_DOWN:
-                incr = -60.0;
-            do_seek:
-                    if (seek_by_bytes) {
-                        pos = -1;
-                        if (pos < 0 && cur_stream->video_stream >= 0)
-                            pos = frame_queue_last_pos(&cur_stream->pictq);
-                        if (pos < 0 && cur_stream->audio_stream >= 0)
-                            pos = frame_queue_last_pos(&cur_stream->sampq);
-                        if (pos < 0)
-                            pos = avio_tell(cur_stream->ic->pb);
-                        if (cur_stream->ic->bit_rate)
-                            incr *= cur_stream->ic->bit_rate / 8.0;
-                        else
-                            incr *= 180000.0;
-                        pos += incr;
-                        stream_seek(cur_stream, pos, incr, 1);
+                case SDLK_f:
+                    toggle_full_screen(cur_stream);
+                    cur_stream->force_refresh = 1;
+                    break;
+                case SDLK_p:
+                case SDLK_SPACE:
+                    toggle_pause(cur_stream);
+                    break;
+                case SDLK_m:
+                    toggle_mute(cur_stream);
+                    break;
+                case SDLK_KP_MULTIPLY:
+                case SDLK_0:
+                    update_volume(cur_stream, 1, SDL_VOLUME_STEP);
+                    break;
+                case SDLK_KP_DIVIDE:
+                case SDLK_9:
+                    update_volume(cur_stream, -1, SDL_VOLUME_STEP);
+                    break;
+                case SDLK_s: // S: Step to next frame
+                    step_to_next_frame(cur_stream);
+                    break;
+                case SDLK_a:
+                    stream_cycle_channel(cur_stream, AVMEDIA_TYPE_AUDIO);
+                    break;
+                case SDLK_v:
+                    stream_cycle_channel(cur_stream, AVMEDIA_TYPE_VIDEO);
+                    break;
+                case SDLK_c:
+                    stream_cycle_channel(cur_stream, AVMEDIA_TYPE_VIDEO);
+                    stream_cycle_channel(cur_stream, AVMEDIA_TYPE_AUDIO);
+                    stream_cycle_channel(cur_stream, AVMEDIA_TYPE_SUBTITLE);
+                    break;
+                case SDLK_t:
+                    stream_cycle_channel(cur_stream, AVMEDIA_TYPE_SUBTITLE);
+                    break;
+                case SDLK_w:
+    #if CONFIG_AVFILTER
+                    if (cur_stream->show_mode == SHOW_MODE_VIDEO && cur_stream->vfilter_idx < nb_vfilters - 1) {
+                        if (++cur_stream->vfilter_idx >= nb_vfilters)
+                            cur_stream->vfilter_idx = 0;
                     } else {
-                        pos = get_master_clock(cur_stream);
-                        if (isnan(pos))
-                            pos = (double)cur_stream->seek_pos / AV_TIME_BASE;
-                        pos += incr;
-                        if (cur_stream->ic->start_time != AV_NOPTS_VALUE && pos < cur_stream->ic->start_time / (double)AV_TIME_BASE)
-                            pos = cur_stream->ic->start_time / (double)AV_TIME_BASE;
-                        stream_seek(cur_stream, (int64_t)(pos * AV_TIME_BASE), (int64_t)(incr * AV_TIME_BASE), 0);
+                        cur_stream->vfilter_idx = 0;
+                        toggle_audio_display(cur_stream);
                     }
-                break;
-            default:
-                break;
+    #else
+                    toggle_audio_display(cur_stream);
+    #endif
+                    break;
+                case SDLK_PAGEUP:
+                    if (cur_stream->ic->nb_chapters <= 1) {
+                        incr = 600.0;
+                        goto do_seek;
+                    }
+                    seek_chapter(cur_stream, 1);
+                    break;
+                case SDLK_PAGEDOWN:
+                    if (cur_stream->ic->nb_chapters <= 1) {
+                        incr = -600.0;
+                        goto do_seek;
+                    }
+                    seek_chapter(cur_stream, -1);
+                    break;
+                case SDLK_LEFT:
+                    incr = seek_interval ? -seek_interval : -10.0;
+                    goto do_seek;
+                case SDLK_RIGHT:
+                    incr = seek_interval ? seek_interval : 10.0;
+                    goto do_seek;
+                case SDLK_UP:
+                    incr = 60.0;
+                    goto do_seek;
+                case SDLK_DOWN:
+                    incr = -60.0;
+                do_seek:
+                        if (seek_by_bytes) {
+                            pos = -1;
+                            if (pos < 0 && cur_stream->video_stream_index >= 0)
+                                pos = frame_queue_last_pos(&cur_stream->pictq);
+                            if (pos < 0 && cur_stream->audio_stream_index >= 0)
+                                pos = frame_queue_last_pos(&cur_stream->sampq);
+                            if (pos < 0)
+                                pos = avio_tell(cur_stream->ic->pb);
+                            if (cur_stream->ic->bit_rate)
+                                incr *= cur_stream->ic->bit_rate / 8.0;
+                            else
+                                incr *= 180000.0;
+                            pos += incr;
+                            stream_seek(cur_stream, pos, incr, 1);
+                        } else {
+                            pos = get_master_clock(cur_stream);
+                            if (isnan(pos))
+                                pos = (double)cur_stream->seek_pos / AV_TIME_BASE;
+                            pos += incr;
+                            if (cur_stream->ic->start_time != AV_NOPTS_VALUE && pos < cur_stream->ic->start_time / (double)AV_TIME_BASE)
+                                pos = cur_stream->ic->start_time / (double)AV_TIME_BASE;
+                            stream_seek(cur_stream, (int64_t)(pos * AV_TIME_BASE), (int64_t)(incr * AV_TIME_BASE), 0);
+                        }
+                    break;
+                default:
+                    break;
             }
             break;
         case SDL_MOUSEBUTTONDOWN:
