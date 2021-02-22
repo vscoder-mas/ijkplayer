@@ -109,21 +109,23 @@ const int program_birth_year = 2003;
 
 static unsigned sws_flags = SWS_BICUBIC;
 
-typedef struct MyAVPacketList {
+//serial字段主要用于标记当前节点的序列号，ffplay中多处用到serial的概念，一般用于区分是否连续数据
+typedef struct MyAVPacketNode {
     AVPacket pkt;
-    struct MyAVPacketList *next;
+    struct MyAVPacketNode *next;
     int serial;
-} MyAVPacketList;
+} MyAVPacketNode;
 
 typedef struct PacketQueue {
-    MyAVPacketList *first_pkt, *last_pkt;
-    int nb_packets;                 // 队列中packet的数量
-    int size;                       // 队列所占内存空间大小
-    int64_t duration;               // 队列中所有packet总的播放时长
-    int abort_request;
-    int serial;                     // 播放序列，所谓播放序列就是一段连续的播放动作，一个seek操作会启动一段新的播放序列
-    SDL_mutex *mutex;
-    SDL_cond *cond;
+    MyAVPacketNode *first_pkt, *last_pkt;//队首，队尾
+    int nb_packets;//队列中一共有多少个节点
+    int size;//队列所有节点字节总数，用于计算cache大小
+    int64_t duration;//队列所有节点的合计时长
+    //1. abort 0. run
+    int abort_request;//是否要中止队列操作，用于安全快速退出播放
+    int serial;//序列号，和MyAVPacketNode的serial作用相同，但改变的时序稍微有点不同
+    SDL_mutex *mutex;//用于维持PacketQueue的多线程安全(SDL_mutex可以按pthread_mutex_t理解）
+    SDL_cond *cond;//用于读、写线程相互通知(SDL_cond可以按pthread_cond_t理解)
 } PacketQueue;
 
 #define VIDEO_PICTURE_QUEUE_SIZE 3
@@ -159,8 +161,8 @@ typedef struct Clock {
 
 /* Common struct for handling all types of decoded data and allocated render buffers. */
 typedef struct Frame {
-    AVFrame *frame;
-    AVSubtitle sub;
+    AVFrame *frame; //视频或音频的解码数据
+    AVSubtitle sub; //解码的字幕数据
     int serial;
     double pts;           /* presentation timestamp for the frame */
     double duration;      /* estimated duration of the frame */
@@ -174,15 +176,15 @@ typedef struct Frame {
 } Frame;
 
 typedef struct FrameQueue {
-    Frame queue[FRAME_QUEUE_SIZE];
+    Frame queue[FRAME_QUEUE_SIZE]; //队列元素，用数组模拟队列
     int rindex;                     // 读索引。待播放时读取此帧进行播放，播放后此帧成为上一帧
     int windex;                     // 写索引
     int size;                       // 总帧数
     int max_size;                   // 队列可存储最大帧数
     //在启用keep_last机制后，rindex_shown值总是为1，rindex_shown确保了最后播放的一帧总保留在队列中
     //通过FrameQueue.keep_last和FrameQueue.rindex_shown两个变量实现了保留最后一次播放帧的机制
-    int keep_last;                  // 是否保留已播放的最后一帧使能标志
-    int rindex_shown;               // 是否保留已播放的最后一帧实现手段
+    int keep_last;//是否要保留最后一个读节点
+    int rindex_shown;//当前节点是否已经显示
     SDL_mutex *mutex;
     SDL_cond *cond;
     PacketQueue *pktq;              // 指向对应的packet_queue
@@ -212,7 +214,7 @@ typedef struct Decoder {
 } Decoder;
 
 typedef struct VideoState {
-    SDL_Thread *read_tid;           // demux解复用线程
+    SDL_Thread *read_tid;           // demux解复用线程，读视频文件stream线程，得到AVPacket，并对packet入栈
     AVInputFormat *iformat;
     int abort_request;
     int force_refresh;
@@ -368,7 +370,7 @@ static int find_stream_info = 1;
 /* current context */
 static int is_full_screen;
 static int64_t audio_callback_time;
-
+//是一个特殊的packet，主要用来作为非连续的两端数据的“分界”标记
 static AVPacket flush_pkt;
 
 #define FF_QUIT_EVENT    (SDL_USEREVENT + 2)
@@ -415,8 +417,7 @@ static int opt_add_vfilter(void *optctx, const char *opt, const char *arg)
 
 static inline
 int cmp_audio_fmts(enum AVSampleFormat fmt1, int64_t channel_count1,
-                   enum AVSampleFormat fmt2, int64_t channel_count2)
-{
+                   enum AVSampleFormat fmt2, int64_t channel_count2) {
     /* If channel count == 1, planar and non-planar formats are the same */
     if (channel_count1 == 1 && channel_count2 == 1)
         return av_get_packed_sample_fmt(fmt1) != av_get_packed_sample_fmt(fmt2);
@@ -425,38 +426,50 @@ int cmp_audio_fmts(enum AVSampleFormat fmt1, int64_t channel_count1,
 }
 
 static inline
-int64_t get_valid_channel_layout(int64_t channel_layout, int channels)
-{
+int64_t get_valid_channel_layout(int64_t channel_layout, int channels) {
     if (channel_layout && av_get_channel_layout_nb_channels(channel_layout) == channels)
         return channel_layout;
     else
         return 0;
 }
 
+//计算serial serial标记了这个节点内的数据是何时的。一般情况下新增节点与上一个节点的serial是一样的
+//但当队列中加入一个flush_pkt后，后续节点的serial会比之前大1
 static int packet_queue_put_private(PacketQueue *q, AVPacket *pkt) {
-    MyAVPacketList *pkt1;
-
-    if (q->abort_request)
+    MyAVPacketNode *pkt1;
+    if (q->abort_request) {
        return -1;
+    }
 
-    pkt1 = av_malloc(sizeof(MyAVPacketList));
-    if (!pkt1)
+    pkt1 = av_malloc(sizeof(MyAVPacketNode));
+    if (!pkt1) {
         return -1;
+    }
+
+    //拷贝AVPacket(浅拷贝，AVPacket.data等内存并没有拷贝)
     pkt1->pkt = *pkt;
     pkt1->next = NULL;
-    if (pkt == &flush_pkt)
+    //如果放入的是flush_pkt，需要增加队列的序列号，以区分不连续的两段数据
+    if (pkt == &flush_pkt) {
         q->serial++;
-    pkt1->serial = q->serial;
+    }
 
-    if (!q->last_pkt)
+    //用队列序列号标记节点
+    pkt1->serial = q->serial;
+    //队列操作：如果last_pkt为空，说明队列是空的，新增节点为队头；
+    //否则，队列有数据，则让原队尾的next为新增节点。 最后将队尾指向新增节点
+    if (!q->last_pkt) {
         q->first_pkt = pkt1;
-    else
+    } else {
         q->last_pkt->next = pkt1;
+    }
+
     q->last_pkt = pkt1;
     q->nb_packets++;
     q->size += pkt1->pkt.size + sizeof(*pkt1);
     q->duration += pkt1->pkt.duration;
     /* XXX: should duplicate packet data in DV case */
+    //发出信号，表明当前队列中有数据了，通知等待中的读线程可以取数据了
     SDL_CondSignal(q->cond);
     return 0;
 }
@@ -467,12 +480,14 @@ static int packet_queue_put(PacketQueue *q, AVPacket *pkt) {
     ret = packet_queue_put_private(q, pkt);
     SDL_UnlockMutex(q->mutex);
 
-    if (pkt != &flush_pkt && ret < 0)
+    if (pkt != &flush_pkt && ret < 0) {
         av_packet_unref(pkt);
+    }
 
     return ret;
 }
 
+//放入空包意味着流的结束，一般在视频读取完成的时候放入空包
 static int packet_queue_put_nullpacket(PacketQueue *q, int stream_index) {
     AVPacket pkt1, *pkt = &pkt1;
     av_init_packet(pkt);
@@ -500,7 +515,7 @@ static int packet_queue_init(PacketQueue *q) {
 }
 
 static void packet_queue_flush(PacketQueue *q) {
-    MyAVPacketList *pkt, *pkt1;
+    MyAVPacketNode *pkt, *pkt1;
 
     SDL_LockMutex(q->mutex);
     for (pkt = q->first_pkt; pkt; pkt = pkt1) {
@@ -508,6 +523,7 @@ static void packet_queue_flush(PacketQueue *q) {
         av_packet_unref(&pkt->pkt);
         av_freep(&pkt);
     }
+
     q->last_pkt = NULL;
     q->first_pkt = NULL;
     q->nb_packets = 0;
@@ -517,35 +533,38 @@ static void packet_queue_flush(PacketQueue *q) {
 }
 
 static void packet_queue_destroy(PacketQueue *q) {
-    packet_queue_flush(q);
+    packet_queue_flush(q);//先清除所有的节点
     SDL_DestroyMutex(q->mutex);
     SDL_DestroyCond(q->cond);
 }
 
 static void packet_queue_abort(PacketQueue *q) {
     SDL_LockMutex(q->mutex);
-
     q->abort_request = 1;
-
     SDL_CondSignal(q->cond);
-
     SDL_UnlockMutex(q->mutex);
 }
 
+//启动队列
 static void packet_queue_start(PacketQueue *q) {
     SDL_LockMutex(q->mutex);
     q->abort_request = 0;
+    //这里放入了一个flush_pkt
     packet_queue_put_private(q, &flush_pkt);
     SDL_UnlockMutex(q->mutex);
 }
 
 /* return < 0 if aborted, 0 if no packet and > 0 if packet.  */
+//block: 调用者是否需要在没节点可取的情况下阻塞等待
+//AVPacket: 输出参数，即MyAVPacketNode.pkt
+//serial: 输出参数，即MyAVPacketNode.serial
 static int packet_queue_get(PacketQueue *q, AVPacket *pkt, int block, int *serial) {
-    MyAVPacketList *pkt1;
+    MyAVPacketNode *pkt1;
     int ret;
-
     SDL_LockMutex(q->mutex);
-
+    
+    //这里for循环主要充当一个“壳”，以方便在一块多分支代码中可以通过break调到统一的出口
+    //对于加锁情况下的多分支return，这是一个不错的写法。但要小心这是一把双刃剑，没有仔细处理每个分支，容易陷入死循环
     for (;;) {
         if (q->abort_request) {
             ret = -1;
@@ -560,8 +579,8 @@ static int packet_queue_get(PacketQueue *q, AVPacket *pkt, int block, int *seria
             q->nb_packets--;
             q->size -= pkt1->pkt.size + sizeof(*pkt1);
             q->duration -= pkt1->pkt.duration;
-            *pkt = pkt1->pkt;
-            if (serial)
+            *pkt = pkt1->pkt; //返回AVPacket，这里发生一次AVPacket结构体拷贝，AVPacket的data只拷贝了指针
+            if (serial) //如果需要输出serial，把serial输出
                 *serial = pkt1->serial;
             av_free(pkt1);
             ret = 1;
@@ -573,6 +592,7 @@ static int packet_queue_get(PacketQueue *q, AVPacket *pkt, int block, int *seria
             SDL_CondWait(q->cond, q->mutex);
         }
     }
+
     SDL_UnlockMutex(q->mutex);
     return ret;
 }
@@ -693,10 +713,9 @@ static void decoder_destroy(Decoder *d) {
     avcodec_free_context(&d->avctx);
 }
 
-static void frame_queue_unref_item(Frame *vp)
-{
-    av_frame_unref(vp->frame);
-    avsubtitle_free(&vp->sub);
+static void frame_queue_unref_item(Frame *vp) {
+    av_frame_unref(vp->frame); //frame计数减1
+    avsubtitle_free(&vp->sub); //sub关联的内存释放
 }
 
 static int frame_queue_init(FrameQueue *f, PacketQueue *pktq, int max_size, int keep_last) {
@@ -706,14 +725,18 @@ static int frame_queue_init(FrameQueue *f, PacketQueue *pktq, int max_size, int 
         av_log(NULL, AV_LOG_FATAL, "SDL_CreateMutex(): %s\n", SDL_GetError());
         return AVERROR(ENOMEM);
     }
+
     if (!(f->cond = SDL_CreateCond())) {
         av_log(NULL, AV_LOG_FATAL, "SDL_CreateCond(): %s\n", SDL_GetError());
         return AVERROR(ENOMEM);
     }
+
     f->pktq = pktq;
+    //f->max_size:16
     f->max_size = FFMIN(max_size, FRAME_QUEUE_SIZE);
-    // f->keep_last = !!keep_last;
-    f->keep_last = 0;
+    //keep_last是一个bool值，表示是否在环形缓冲区的读写过程中保留最后一个读节点不被覆写
+    //f->keep_last = !!keep_last;里的双感叹号是C中的一种技巧，旨在让int参数规整为0/1的“bool值”
+    f->keep_last = !!keep_last;
     //先将预存储的Frame数组的每个Frame，分配内存空间 av_frame_alloc
     for (i = 0; i < f->max_size; i++)
         if (!(f->queue[i].frame = av_frame_alloc()))
@@ -728,6 +751,7 @@ static void frame_queue_destory(FrameQueue *f) {
         frame_queue_unref_item(vp);     // 释放对vp->frame中的数据缓冲区的引用，注意不是释放frame对象本身
         av_frame_free(&vp->frame);      // 释放vp->frame对象
     }
+
     SDL_DestroyMutex(f->mutex);
     SDL_DestroyCond(f->cond);
 }
@@ -1080,8 +1104,7 @@ static void video_image_display(VideoState *is) {
     }
 }
 
-static inline int compute_mod(int a, int b)
-{
+static inline int compute_mod(int a, int b) {
     return a < 0 ? a%b + b : a%b;
 }
 
@@ -1226,8 +1249,7 @@ static void video_audio_display(VideoState *s) {
     }
 }
 
-static void stream_component_close(VideoState *is, int stream_index)
-{
+static void stream_component_close(VideoState *is, int stream_index) {
     AVFormatContext *ic = is->ic;
     AVCodecParameters *codecpar;
 
@@ -1283,8 +1305,7 @@ static void stream_component_close(VideoState *is, int stream_index)
     }
 }
 
-static void stream_close(VideoState *is)
-{
+static void stream_close(VideoState *is) {
     /* XXX: use a special url_shutdown call to abort parse cleanly */
     is->abort_request = 1;
     SDL_WaitThread(is->read_tid, NULL);
@@ -1320,8 +1341,7 @@ static void stream_close(VideoState *is)
     av_free(is);
 }
 
-static void do_exit(VideoState *is)
-{
+static void do_exit(VideoState *is) {
     if (is) {
         stream_close(is);
     }
@@ -1381,15 +1401,18 @@ static int video_open(VideoState *is) {
 
 /* display the current picture, if any */
 static void video_display(VideoState *is) {
-    if (!is->width)
+    if (!is->width) {
         video_open(is);
+    }
 
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderClear(renderer);
-    if (is->audio_st && is->show_mode != SHOW_MODE_VIDEO)
+    if (is->audio_st && is->show_mode != SHOW_MODE_VIDEO) {
         video_audio_display(is);
-    else if (is->video_st)
+    } else if (is->video_st) {
         video_image_display(is);
+    }
+
     SDL_RenderPresent(renderer);
 }
 
@@ -1500,6 +1523,7 @@ static void stream_seek(VideoState *is, int64_t pos, int64_t rel, int seek_by_by
 /* pause or resume the video */
 static void stream_toggle_pause(VideoState *is) {
     if (is->paused) {
+        // 这里表示当前是暂停状态，将切换到继续播放状态。在继续播放之前，先将暂停期间流逝的时间加到frame_timer中
         is->frame_timer += av_gettime_relative() / 1000000.0 - is->vidclk.last_updated;
         if (is->read_pause_return != AVERROR(ENOSYS)) {
             is->vidclk.paused = 0;
@@ -1510,6 +1534,7 @@ static void stream_toggle_pause(VideoState *is) {
     is->paused = is->audclk.paused = is->vidclk.paused = is->extclk.paused = !is->paused;
 }
 
+//播放/暂停状态切换
 static void toggle_pause(VideoState *is) {
     stream_toggle_pause(is);
     is->step = 0;
@@ -1527,8 +1552,10 @@ static void update_volume(VideoState *is, int sign, double step) {
 
 static void step_to_next_frame(VideoState *is) {
     /* if the stream is paused unpause it, then step */
-    if (is->paused)
+    if (is->paused) {
+        // 确保切换到播放状态，播放一帧画面
         stream_toggle_pause(is);
+    }
     is->step = 1;
 }
 
@@ -1558,8 +1585,12 @@ static double compute_target_delay(double delay, VideoState *is) {
                 delay = FFMAX(0, delay + diff); // 当前帧播放时刻落后于同步时钟(delay+diff<0)则delay=0(视频追赶，立即播放)，否则delay=delay+diff
             else if (diff >= sync_threshold && delay > AV_SYNC_FRAMEDUP_THRESHOLD)  // 视频时钟超前于同步时钟，且超过同步域值，但上一帧播放时长超长
                 delay = delay + diff;           // 仅仅校正为delay=delay+diff，主要是AV_SYNC_FRAMEDUP_THRESHOLD参数的作用，不作同步补偿
-            else if (diff >= sync_threshold)    // 视频时钟超前于同步时钟，且超过同步域值
-                delay = 2 * delay;              // 视频播放要放慢脚步，delay扩大至2倍
+            else if (diff >= sync_threshold) {
+                // 视频时钟超前于同步时钟，且超过同步域值
+                // 视频播放要放慢脚步，delay扩大至2倍
+                //假如当前帧的播放时间，也就是pts，超前于主时钟，那就需要加大延时
+                delay = 2 * delay;
+            }
         }
     }
 
@@ -1608,7 +1639,7 @@ static void video_refresh(void *opaque, double *remaining_time) {
         *remaining_time = FFMIN(*remaining_time, is->last_vis_time + rdftspeed - time);
     }
 
-    //如果有视频流
+    //如果有视频流/视频播放
     if (is->video_st) {
 retry:
         if (frame_queue_nb_remaining(&is->pictq) == 0) {
@@ -1642,8 +1673,10 @@ retry:
             // 根据视频时钟和同步时钟的差值，计算delay值
             delay = compute_target_delay(last_duration, is);
 
+            //获取当前时间
             time= av_gettime_relative()/1000000.0;
             // 当前帧播放时刻(is->frame_timer+delay)大于当前时刻(time)，表示播放时刻未到
+            //假如当前时间小于frame_timer + delay，也就是这帧改显示的时间超前，还没到，就直接返回
             if (time < is->frame_timer + delay) {
                 *remaining_time = FFMIN(is->frame_timer + delay - time, *remaining_time);
                 goto display;
@@ -1656,6 +1689,7 @@ retry:
             SDL_LockMutex(is->pictq.mutex);
             if (!isnan(vp->pts)) {
                 // 更新视频时钟：时间戳、时钟时间
+                //更新is当中当前帧的pts，比如video_current_pts、video_current_pos 等变量
                 update_video_pts(is, vp->pts, vp->pos, vp->serial);
             }
             SDL_UnlockMutex(is->pictq.mutex);
@@ -2394,25 +2428,34 @@ static int audio_decode_frame(VideoState *is) {
             av_usleep (1000);
         }
 #endif
+        // 若队列头部可读，则由af指向可读帧
         if (!(af = frame_queue_peek_readable(&is->sampq)))
             return -1;
         frame_queue_next(&is->sampq);
     } while (af->serial != is->audioq.serial);
 
+    // 根据frame中指定的音频参数获取缓冲区的大小
     data_size = av_samples_get_buffer_size(NULL, af->frame->channels,
                                            af->frame->nb_samples,
                                            af->frame->format, 1);
 
+    // 获取声道布局
     dec_channel_layout =
         (af->frame->channel_layout && af->frame->channels == av_get_channel_layout_nb_channels(af->frame->channel_layout)) ?
         af->frame->channel_layout : av_get_default_channel_layout(af->frame->channels);
+    // 获取样本数校正值：若同步时钟是音频，则不调整样本数；否则根据同步需要调整样本数
     wanted_nb_samples = synchronize_audio(is, af->frame->nb_samples);
 
+    // is->audio_tgt是SDL可接受的音频帧数，是audio_open()中取得的参数
+    // 在audio_open()函数中又有"is->audio_src = is->audio_tgt"
+    // 此处表示：如果frame中的音频参数 == is->audio_src == is->audio_tgt，那音频重采样的过程就免了(因此时is->swr_ctr是NULL)
+    // 　　　　　否则使用frame(源)和is->audio_tgt(目标)中的音频参数来设置is->swr_ctx，并使用frame中的音频参数来赋值is->audio_src
     if (af->frame->format        != is->audio_src.fmt            ||
         dec_channel_layout       != is->audio_src.channel_layout ||
         af->frame->sample_rate   != is->audio_src.freq           ||
         (wanted_nb_samples       != af->frame->nb_samples && !is->swr_ctx)) {
         swr_free(&is->swr_ctx);
+        // 使用frame(源)和is->audio_tgt(目标)中的音频参数来设置is->swr_ctx
         is->swr_ctx = swr_alloc_set_opts(NULL,
                                          is->audio_tgt.channel_layout, is->audio_tgt.fmt, is->audio_tgt.freq,
                                          dec_channel_layout,           af->frame->format, af->frame->sample_rate,
@@ -2425,6 +2468,8 @@ static int audio_decode_frame(VideoState *is) {
             swr_free(&is->swr_ctx);
             return -1;
         }
+
+        // 使用frame中的参数更新is->audio_src，第一次更新后后面基本不用执行此if分支了，因为一个音频流中各frame通用参数一样
         is->audio_src.channel_layout = dec_channel_layout;
         is->audio_src.channels       = af->frame->channels;
         is->audio_src.freq = af->frame->sample_rate;
@@ -2432,16 +2477,23 @@ static int audio_decode_frame(VideoState *is) {
     }
 
     if (is->swr_ctx) {
+        // 重采样输入参数1：输入音频样本数是af->frame->nb_samples
+        // 重采样输入参数2：输入音频缓冲区
         const uint8_t **in = (const uint8_t **)af->frame->extended_data;
         uint8_t **out = &is->audio_buf1;
+        // 重采样输出参数：输出音频样本数(多加了256个样本)
         int out_count = (int64_t)wanted_nb_samples * is->audio_tgt.freq / af->frame->sample_rate + 256;
+        // 重采样输出参数：输出音频缓冲区尺寸(以字节为单位)
         int out_size  = av_samples_get_buffer_size(NULL, is->audio_tgt.channels, out_count, is->audio_tgt.fmt, 0);
         int len2;
         if (out_size < 0) {
             av_log(NULL, AV_LOG_ERROR, "av_samples_get_buffer_size() failed\n");
             return -1;
         }
+
+        // 如果frame中的样本数经过校正，则条件成立
         if (wanted_nb_samples != af->frame->nb_samples) {
+            // 重采样补偿：不清楚参数怎么算的
             if (swr_set_compensation(is->swr_ctx, (wanted_nb_samples - af->frame->nb_samples) * is->audio_tgt.freq / af->frame->sample_rate,
                                         wanted_nb_samples * is->audio_tgt.freq / af->frame->sample_rate) < 0) {
                 av_log(NULL, AV_LOG_ERROR, "swr_set_compensation() failed\n");
@@ -2451,6 +2503,8 @@ static int audio_decode_frame(VideoState *is) {
         av_fast_malloc(&is->audio_buf1, &is->audio_buf1_size, out_size);
         if (!is->audio_buf1)
             return AVERROR(ENOMEM);
+
+        // 音频重采样：返回值是重采样后得到的音频数据中单个声道的样本数
         len2 = swr_convert(is->swr_ctx, out, out_count, in, af->frame->nb_samples);
         if (len2 < 0) {
             av_log(NULL, AV_LOG_ERROR, "swr_convert() failed\n");
@@ -2462,8 +2516,10 @@ static int audio_decode_frame(VideoState *is) {
                 swr_free(&is->swr_ctx);
         }
         is->audio_buf = is->audio_buf1;
+        // 重采样返回的一帧音频数据大小(以字节为单位)
         resampled_data_size = len2 * is->audio_tgt.channels * av_get_bytes_per_sample(is->audio_tgt.fmt);
     } else {
+        // 未经重采样，则将指针指向frame中的音频数据
         is->audio_buf = af->frame->data[0];
         resampled_data_size = data_size;
     }
@@ -2558,31 +2614,51 @@ static int audio_open(void *opaque, int64_t wanted_channel_layout, int wanted_nb
     int next_sample_rate_idx = FF_ARRAY_ELEMS(next_sample_rates) - 1;
 
     env = SDL_getenv("SDL_AUDIO_CHANNELS");
+    // 若环境变量有设置，优先从环境变量取得声道数和声道布局
     if (env) {
         wanted_nb_channels = atoi(env);
         wanted_channel_layout = av_get_default_channel_layout(wanted_nb_channels);
     }
+
     if (!wanted_channel_layout || wanted_nb_channels != av_get_channel_layout_nb_channels(wanted_channel_layout)) {
         wanted_channel_layout = av_get_default_channel_layout(wanted_nb_channels);
         wanted_channel_layout &= ~AV_CH_LAYOUT_STEREO_DOWNMIX;
     }
+
+    // 根据channel_layout获取nb_channels，当传入参数wanted_nb_channels不匹配时，此处会作修正
     wanted_nb_channels = av_get_channel_layout_nb_channels(wanted_channel_layout);
-    wanted_spec.channels = wanted_nb_channels;
-    wanted_spec.freq = wanted_sample_rate;
+    wanted_spec.channels = wanted_nb_channels;  // 声道数
+    wanted_spec.freq = wanted_sample_rate;      // 采样率
     if (wanted_spec.freq <= 0 || wanted_spec.channels <= 0) {
         av_log(NULL, AV_LOG_ERROR, "Invalid sample rate or channel count!\n");
         return -1;
     }
-    while (next_sample_rate_idx && next_sample_rates[next_sample_rate_idx] >= wanted_spec.freq)
+    while (next_sample_rate_idx && next_sample_rates[next_sample_rate_idx] >= wanted_spec.freq) {
+        // 从采样率数组中找到第一个不大于传入参数wanted_sample_rate的值
         next_sample_rate_idx--;
-    wanted_spec.format = AUDIO_S16SYS;
-    wanted_spec.silence = 0;
-    wanted_spec.samples = FFMAX(SDL_AUDIO_MIN_BUFFER_SIZE, 2 << av_log2(wanted_spec.freq / SDL_AUDIO_MAX_CALLBACKS_PER_SEC));
-    wanted_spec.callback = sdl_audio_callback;
-    wanted_spec.userdata = opaque;
+    }
+
+    // 音频采样格式有两大类型：planar和packed，假设一个双声道音频文件，一个左声道采样点记作L，一个右声道采样点记作R，则：
+    // planar存储格式：(plane1)LLLLLLLL...LLLL (plane2)RRRRRRRR...RRRR
+    // packed存储格式：(plane1)LRLRLRLR...........................LRLR
+    // 在这两种采样类型下，又细分多种采样格式，如AV_SAMPLE_FMT_S16、AV_SAMPLE_FMT_S16P等，注意SDL2.0目前不支持planar格式
+    // channel_layout是int64_t类型，表示音频声道布局，每bit代表一个特定的声道，参考channel_layout.h中的定义，一目了然
+    // 数据量(bits/秒) = 采样率(Hz) * 采样深度(bit) * 声道数
+    wanted_spec.format = AUDIO_S16SYS;          // 采样格式：S表带符号，16是采样深度(位深)，SYS表采用系统字节序，这个宏在SDL中定义
+    wanted_spec.silence = 0;                    // 静音值
+    wanted_spec.samples = FFMAX(SDL_AUDIO_MIN_BUFFER_SIZE, 2 << av_log2(wanted_spec.freq / SDL_AUDIO_MAX_CALLBACKS_PER_SEC));   // SDL声音缓冲区尺寸，单位是单声道采样点尺寸x声道数
+    wanted_spec.callback = sdl_audio_callback;  // 回调函数，若为NULL，则应使用SDL_QueueAudio()机制
+    wanted_spec.userdata = opaque;              // 提供给回调函数的参数
+    // 打开音频设备并创建音频处理线程。期望的参数是wanted_spec，实际得到的硬件参数是spec
+    // 1) SDL提供两种使音频设备取得音频数据方法：
+    //    a. push，SDL以特定的频率调用回调函数，在回调函数中取得音频数据
+    //    b. pull，用户程序以特定的频率调用SDL_QueueAudio()，向音频设备提供数据。此种情况wanted_spec.callback=NULL
+    // 2) 音频设备打开后播放静音，不启动回调，调用SDL_PauseAudio(0)后启动回调，开始正常播放音频
+    // SDL_OpenAudioDevice()第一个参数为NULL时，等价于SDL_OpenAudio()
     while (!(audio_dev = SDL_OpenAudioDevice(NULL, 0, &wanted_spec, &spec, SDL_AUDIO_ALLOW_FREQUENCY_CHANGE | SDL_AUDIO_ALLOW_CHANNELS_CHANGE))) {
         av_log(NULL, AV_LOG_WARNING, "SDL_OpenAudio (%d channels, %d Hz): %s\n",
                wanted_spec.channels, wanted_spec.freq, SDL_GetError());
+        // 如果打开音频设备失败，则尝试用不同的声道数或采样率再试打开音频设备，这里有些奇怪，暂不深究
         wanted_spec.channels = next_nb_channels[FFMIN(7, wanted_spec.channels)];
         if (!wanted_spec.channels) {
             wanted_spec.freq = next_sample_rates[next_sample_rate_idx--];
@@ -2595,11 +2671,15 @@ static int audio_open(void *opaque, int64_t wanted_channel_layout, int wanted_nb
         }
         wanted_channel_layout = av_get_default_channel_layout(wanted_spec.channels);
     }
+
+    // 检查打开音频设备的实际参数：采样格式
     if (spec.format != AUDIO_S16SYS) {
         av_log(NULL, AV_LOG_ERROR,
                "SDL advised audio format %d is not supported!\n", spec.format);
         return -1;
     }
+
+    // 检查打开音频设备的实际参数：声道数
     if (spec.channels != wanted_spec.channels) {
         wanted_channel_layout = av_get_default_channel_layout(spec.channels);
         if (!wanted_channel_layout) {
@@ -2609,6 +2689,8 @@ static int audio_open(void *opaque, int64_t wanted_channel_layout, int wanted_nb
         }
     }
 
+    // wanted_spec是期望的参数，spec是实际的参数，wanted_spec和spec都是SDL中的结构
+    // 此处audio_hw_params是FFmpeg中的参数，输出参数供上级函数使用
     audio_hw_params->fmt = AV_SAMPLE_FMT_S16;
     audio_hw_params->freq = spec.freq;
     audio_hw_params->channel_layout = wanted_channel_layout;
@@ -2619,6 +2701,7 @@ static int audio_open(void *opaque, int64_t wanted_channel_layout, int wanted_nb
         av_log(NULL, AV_LOG_ERROR, "av_samples_get_buffer_size failed\n");
         return -1;
     }
+
     return spec.size;
 }
 
@@ -3040,6 +3123,7 @@ static int read_thread(void *arg) {
                 av_log(NULL, AV_LOG_ERROR,
                        "%s: error while seeking\n", is->ic->url);
             } else {
+                //冲洗各解码器缓存帧
                 if (is->audio_stream_index >= 0) {
                     packet_queue_flush(&is->audioq);
                     packet_queue_put(&is->audioq, &flush_pkt);
@@ -3391,9 +3475,12 @@ static void event_loop(VideoState *cur_stream) {
                 do_exit(cur_stream);
                 break;
             }
+
             // If we don't yet have a window, skip all key events, because read_thread might still be initializing...
-            if (!cur_stream->width)
+            if (!cur_stream->width) {
                 continue;
+            }
+
             switch (event.key.keysym.sym) {
                 case SDLK_f:
                     toggle_full_screen(cur_stream);
