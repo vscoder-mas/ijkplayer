@@ -202,6 +202,7 @@ typedef struct Decoder {
     AVPacket pkt;
     PacketQueue *queue;
     AVCodecContext *avctx;
+    //Decoder->pkt_serial 初始值 -1
     int pkt_serial;
     int finished;
     int packet_pending;
@@ -257,9 +258,10 @@ typedef struct VideoState {
     int audio_hw_buf_size;          // SDL音频缓冲区大小(单位字节)
     uint8_t *audio_buf;             // 指向待播放的一帧音频数据，指向的数据区将被拷入SDL音频缓冲区。若经过重采样则指向audio_buf1，否则指向frame中的音频
     uint8_t *audio_buf1;            // 音频重采样的输出缓冲区
-    unsigned int audio_buf_size; /* in bytes */ // 待播放的一帧音频数据(audio_buf指向)的大小
+    unsigned int audio_buf_size;    //audio_buf的总大小
     unsigned int audio_buf1_size;   // 申请到的音频缓冲区audio_buf1的实际尺寸
-    int audio_buf_index; /* in bytes */ // 当前音频帧中已拷入SDL音频缓冲区的位置索引(指向第一个待拷贝字节)
+    int audio_buf_index;            // 下一次可读的audio_buf的index位置
+    //audio_buf已经输出的大小，即audio_buf_size - audio_buf_index
     int audio_write_buf_size;       // 当前音频帧中尚未拷入SDL音频缓冲区的数据量，audio_buf_size = audio_buf_index + audio_write_buf_size
     int audio_volume;               // 音量
     int muted;                      // 静音状态
@@ -1072,27 +1074,34 @@ static void video_image_display(VideoState *is) {
     if (is->subtitle_stream) {
         if (frame_queue_nb_remaining(&is->subpq) > 0) {
             sp = frame_queue_peek(&is->subpq);
-
+            //视频画面的显示时刻得大于当前字幕帧的开始时刻(可以以电影字幕想象下，是不是经常有一句台词距离下一句台词比较久的情况
+            //，这个时段就是vp->pts < sp->pts + ((float) sp->sub.start_display_time / 1000)
             if (vp->pts >= sp->pts + ((float) sp->sub.start_display_time / 1000)) {
                 if (!sp->uploaded) {
-                    uint8_t* pixels[4];
+                    //把sp(中的AVSubtitle)渲染到sub_texture(SDL_Texture)
+                    uint8_t *pixels[4];
                     int pitch[4];
                     int i;
                     if (!sp->width || !sp->height) {
                         sp->width = vp->width;
                         sp->height = vp->height;
                     }
-                    if (realloc_texture(&is->sub_texture, SDL_PIXELFORMAT_ARGB8888, sp->width, sp->height, SDL_BLENDMODE_BLEND, 1) < 0)
-                        return;
 
+                    //如果字幕区域变化，则重建sub_texture
+                    if (realloc_texture(&is->sub_texture, SDL_PIXELFORMAT_ARGB8888, sp->width, sp->height, SDL_BLENDMODE_BLEND, 1) < 0) {
+                        return;
+                    }
+
+                    //一帧字幕可能有多块显示区域，遍历显示
                     for (i = 0; i < sp->sub.num_rects; i++) {
                         AVSubtitleRect *sub_rect = sp->sub.rects[i];
-
-                        sub_rect->x = av_clip(sub_rect->x, 0, sp->width );
+                        //clip到sp的合法显示区域内(ffplay总是这么不相信解码器么？)
+                        sub_rect->x = av_clip(sub_rect->x, 0, sp->width);
                         sub_rect->y = av_clip(sub_rect->y, 0, sp->height);
-                        sub_rect->w = av_clip(sub_rect->w, 0, sp->width  - sub_rect->x);
+                        sub_rect->w = av_clip(sub_rect->w, 0, sp->width - sub_rect->x);
                         sub_rect->h = av_clip(sub_rect->h, 0, sp->height - sub_rect->y);
 
+                        //因为可能需要转换像素格式、裁剪字幕，所以需要用到libswscale
                         is->sub_convert_ctx = sws_getCachedContext(is->sub_convert_ctx,
                             sub_rect->w, sub_rect->h, AV_PIX_FMT_PAL8,
                             sub_rect->w, sub_rect->h, AV_PIX_FMT_BGRA,
@@ -1101,17 +1110,21 @@ static void video_image_display(VideoState *is) {
                             av_log(NULL, AV_LOG_FATAL, "Cannot initialize the conversion context\n");
                             return;
                         }
+
+                        //取texture像素buffer，直接操作，通过sws_scale转换像素格式
                         if (!SDL_LockTexture(is->sub_texture, (SDL_Rect *)sub_rect, (void **)pixels, pitch)) {
                             sws_scale(is->sub_convert_ctx, (const uint8_t * const *)sub_rect->data, sub_rect->linesize,
                                       0, sub_rect->h, pixels, pitch);
                             SDL_UnlockTexture(is->sub_texture);
                         }
                     }
+                    //标记为已渲染，避免下次再次渲染
                     sp->uploaded = 1;
                 }
-            } else
+            } else {
                 sp = NULL;
-        }
+            }
+        } //if (frame_queue_nb_remaining(&is->subpq) > 0) {
     } //if (is->subtitle_stream) {
 
     //将帧宽高按照sar最大适配到窗口
@@ -1131,8 +1144,10 @@ static void video_image_display(VideoState *is) {
     //SDL_RenderCopyEx拷贝纹理给render显示
     SDL_RenderCopyEx(renderer, is->vid_texture, NULL, &rect, 0, NULL, vp->flip_v ? SDL_FLIP_VERTICAL : 0);
     set_sdl_yuv_conversion_mode(NULL);
+
     if (sp) {
         #if USE_ONEPASS_SUBTITLE_RENDER
+                //提交sub_texture。在vid_texture之后提交，等于把视频画面当做背景
                 SDL_RenderCopy(renderer, is->sub_texture, NULL, &rect);
         #else
                 int i;
@@ -1462,7 +1477,7 @@ static void video_display(VideoState *is) {
         //图形化显示仅有音轨的文件
         video_audio_display(is);
     } else if (is->video_stream) {
-        //显示一帧视频画面
+        //显示一帧视频画面&字幕
         video_image_display(is);
     }
 
@@ -1779,16 +1794,21 @@ retry:
             if (is->subtitle_stream) {
                 while (frame_queue_nb_remaining(&is->subpq) > 0) {
                     sp = frame_queue_peek(&is->subpq);
-
-                    if (frame_queue_nb_remaining(&is->subpq) > 1)
+                    if (frame_queue_nb_remaining(&is->subpq) > 1) {
                         sp2 = frame_queue_peek_next(&is->subpq);
-                    else
+                    } else {
                         sp2 = NULL;
-
+                    }
+                        
+                    //更新得到的is->vidclk.pts就是当前帧的输出时刻，根据这一时刻可以判断subtitle是否应该隐藏或丢帧
+                    //具体地，需要丢帧的情况有:
+                    //1.sp的serial与当前subtitleq的serial不相等。这意味着可能发生了seek，总之，该sp是无效了的
+                    //2.vidclk.pts大于sp（正常情况下，就是正在显示的，我们所能看到的字幕）的结束显示时刻
+                    //3.vidclk.pts大于sp2（下一句字幕）的开始显示时刻
                     if (sp->serial != is->subtitleq.serial
                             || (is->vidclk.pts > (sp->pts + ((float) sp->sub.end_display_time / 1000)))
-                            || (sp2 && is->vidclk.pts > (sp2->pts + ((float) sp2->sub.start_display_time / 1000))))
-                    {
+                            || (sp2 && is->vidclk.pts > (sp2->pts + ((float) sp2->sub.start_display_time / 1000)))) {
+                        //如果其已经显示过（sp->uploaded == 1），就需要清空显示画面,这是通过memset sdl texture的pixel实现的
                         if (sp->uploaded) {
                             int i;
                             for (i = 0; i < sp->sub.num_rects; i++) {
@@ -1797,12 +1817,14 @@ retry:
                                 int pitch, j;
 
                                 if (!SDL_LockTexture(is->sub_texture, (SDL_Rect *)sub_rect, (void **)&pixels, &pitch)) {
-                                    for (j = 0; j < sub_rect->h; j++, pixels += pitch)
+                                    for (j = 0; j < sub_rect->h; j++, pixels += pitch) {
                                         memset(pixels, 0, sub_rect->w << 2);
+                                    }
                                     SDL_UnlockTexture(is->sub_texture);
                                 }
                             }
                         }
+                        //丢帧则是通过frame_queue_next实现
                         frame_queue_next(&is->subpq);
                     } else {
                         break;
@@ -2431,8 +2453,8 @@ static int subtitle_thread(void *arg) {
 /* copy samples for viewing in editor window */
 static void update_sample_display(VideoState *is, short *samples, int samples_size) {
     int size, len;
-
     size = samples_size / sizeof(short);
+
     while (size > 0) {
         len = SAMPLE_ARRAY_SIZE - is->sample_array_index;
         if (len > size)
@@ -2502,10 +2524,13 @@ static int audio_decode_frame(VideoState *is) {
     int wanted_nb_samples;
     CusFrame *af;
 
-    if (is->paused)
+    if (is->paused) {
+        //暂停状态，返回-1，sdl_audio_callback会处理为输出静音
         return -1;
+    }
 
     do {
+        //从sampq取一帧，必要时丢帧;如发生了seek，此时serial会不连续，就需要丢帧处理
 #if defined(_WIN32)
         while (frame_queue_nb_remaining(&is->sampq) == 0) {
             if ((av_gettime_relative() - audio_callback_time) > 1000000LL * is->audio_hw_buf_size / is->audio_tgt.bytes_per_sec / 2)
@@ -2514,12 +2539,15 @@ static int audio_decode_frame(VideoState *is) {
         }
 #endif
         // 若队列头部可读，则由af指向可读帧
-        if (!(af = frame_queue_peek_readable(&is->sampq)))
+        //1. 从sampq取一帧，必要时丢帧
+        if (!(af = frame_queue_peek_readable(&is->sampq))) {
             return -1;
+        }
         frame_queue_next(&is->sampq);
     } while (af->serial != is->audioq.serial);
 
     // 根据frame中指定的音频参数获取缓冲区的大小
+    //2. 计算这一帧的字节数
     data_size = av_samples_get_buffer_size(NULL, af->frame->channels,
                                            af->frame->nb_samples,
                                            af->frame->format, 1);
@@ -2533,8 +2561,9 @@ static int audio_decode_frame(VideoState *is) {
 
     // is->audio_tgt是SDL可接受的音频帧数，是audio_open()中取得的参数
     // 在audio_open()函数中又有"is->audio_src = is->audio_tgt"
-    // 此处表示：如果frame中的音频参数 == is->audio_src == is->audio_tgt，那音频重采样的过程就免了(因此时is->swr_ctr是NULL)
-    // 　　　　　否则使用frame(源)和is->audio_tgt(目标)中的音频参数来设置is->swr_ctx，并使用frame中的音频参数来赋值is->audio_src
+    // 此处表示：如果frame中的音频参数 == is->audio_src == is->audio_tgt，那音频重采样的过程就免了(因此时is->swr_ctx是NULL)
+    // 否则使用frame(源)和is->audio_tgt(目标)中的音频参数来设置is->swr_ctx，并使用frame中的音频参数来赋值is->audio_src
+    //判断是否需要重新初始化重采样
     if (af->frame->format        != is->audio_src.fmt            ||
         dec_channel_layout       != is->audio_src.channel_layout ||
         af->frame->sample_rate   != is->audio_src.freq           ||
@@ -2569,7 +2598,7 @@ static int audio_decode_frame(VideoState *is) {
         // 重采样输出参数：输出音频样本数(多加了256个样本)
         int out_count = (int64_t)wanted_nb_samples * is->audio_tgt.freq / af->frame->sample_rate + 256;
         // 重采样输出参数：输出音频缓冲区尺寸(以字节为单位)
-        int out_size  = av_samples_get_buffer_size(NULL, is->audio_tgt.channels, out_count, is->audio_tgt.fmt, 0);
+        int out_size = av_samples_get_buffer_size(NULL, is->audio_tgt.channels, out_count, is->audio_tgt.fmt, 0);
         int len2;
         if (out_size < 0) {
             av_log(NULL, AV_LOG_ERROR, "av_samples_get_buffer_size() failed\n");
@@ -2586,20 +2615,24 @@ static int audio_decode_frame(VideoState *is) {
             }
         }
         av_fast_malloc(&is->audio_buf1, &is->audio_buf1_size, out_size);
-        if (!is->audio_buf1)
+        if (!is->audio_buf1) {
             return AVERROR(ENOMEM);
+        }
 
         // 音频重采样：返回值是重采样后得到的音频数据中单个声道的样本数
+        //uint8_t **out = &is->audio_buf1;
         len2 = swr_convert(is->swr_ctx, out, out_count, in, af->frame->nb_samples);
         if (len2 < 0) {
             av_log(NULL, AV_LOG_ERROR, "swr_convert() failed\n");
             return -1;
         }
+
         if (len2 == out_count) {
             av_log(NULL, AV_LOG_WARNING, "audio buffer is probably too small\n");
             if (swr_init(is->swr_ctx) < 0)
                 swr_free(&is->swr_ctx);
         }
+
         is->audio_buf = is->audio_buf1;
         // 重采样返回的一帧音频数据大小(以字节为单位)
         resampled_data_size = len2 * is->audio_tgt.channels * av_get_bytes_per_sample(is->audio_tgt.fmt);
@@ -2609,6 +2642,7 @@ static int audio_decode_frame(VideoState *is) {
         resampled_data_size = data_size;
     }
 
+    //audio_clock0用于打印调试信息
     audio_clock0 = is->audio_clock;
     /* update the audio clock with the pts */
     if (!isnan(af->pts))
@@ -2625,6 +2659,8 @@ static int audio_decode_frame(VideoState *is) {
         last_clock = is->audio_clock;
     }
 #endif
+
+    //返回audio_buf的数据大小
     return resampled_data_size;
 }
 
@@ -2639,16 +2675,17 @@ static int audio_decode_frame(VideoState *is) {
 static void sdl_audio_callback(void *opaque, Uint8 *stream, int len) {
     VideoState *is = opaque;
     int audio_size, len1;
-
     audio_callback_time = av_gettime_relative();
 
     // 输入参数len等于is->audio_hw_buf_size，是audio_open()中申请到的SDL音频缓冲区大小
+    //循环发送，直到发够所需数据长度
     while (len > 0) {
+        //如果audio_buf消耗完了，就调用audio_decode_frame重新填充audio_buf
         if (is->audio_buf_index >= is->audio_buf_size) {
             // 1. 从音频frame队列中取出一个frame，转换为音频设备支持的格式，返回值是重采样音频帧的大小
            audio_size = audio_decode_frame(is);
            if (audio_size < 0) {
-                /* if error, just output silence */
+                /* if error, just output silence(静音) */
                is->audio_buf = NULL;
                is->audio_buf_size = SDL_AUDIO_MIN_BUFFER_SIZE / is->audio_tgt.frame_size * is->audio_tgt.frame_size;
            } else {
@@ -2661,25 +2698,29 @@ static void sdl_audio_callback(void *opaque, Uint8 *stream, int len) {
 
         // 引入is->audio_buf_index的作用：防止一帧音频数据大小超过SDL音频缓冲区大小，这样一帧数据需要经过多次拷贝
         // 用is->audio_buf_index标识重采样帧中已拷入SDL音频缓冲区的数据位置索引，len1表示本次拷贝的数据量
+        //根据缓冲区剩余大小量力而行
         len1 = is->audio_buf_size - is->audio_buf_index;
         if (len1 > len)
             len1 = len;
 
         // 2. 将转换后的音频数据拷贝到音频缓冲区stream中，之后的播放就是音频设备驱动程序的工作了
-        if (!is->muted && is->audio_buf && is->audio_volume == SDL_MIX_MAXVOLUME)
+        //输出audio_buf到stream，如果audio_volume为最大音量，则只需memcpy复制给stream即可;否则，可以利用SDL_MixAudioFormat进行音量调整和混音
+        if (!is->muted && is->audio_buf && is->audio_volume == SDL_MIX_MAXVOLUME) {
             memcpy(stream, (uint8_t *)is->audio_buf + is->audio_buf_index, len1);
-        else {
+        } else {
             memset(stream, 0, len1);
-            if (!is->muted && is->audio_buf)
+            if (!is->muted && is->audio_buf) {
                 SDL_MixAudioFormat(stream, (uint8_t *)is->audio_buf + is->audio_buf_index, AUDIO_S16SYS, len1, is->audio_volume);
+            }
         }
         len -= len1;
         stream += len1;
         is->audio_buf_index += len1;
-    }
+    } //while (len > 0) {
 
     // is->audio_write_buf_size是本帧中尚未拷入SDL音频缓冲区的数据量
     is->audio_write_buf_size = is->audio_buf_size - is->audio_buf_index;
+
     /* Let's assume the audio driver that is used by SDL has two periods. */
     //3. 更新时钟
     if (!isnan(is->audio_clock)) {
@@ -2893,18 +2934,22 @@ static int stream_component_open(VideoState *is, int stream_index) {
                 channel_layout = av_buffersink_get_channel_layout(sink);
             }
     #else
+            //从avctx(即AVCodecContext)中获取音频格式参数
             sample_rate    = avctx->sample_rate;
             nb_channels    = avctx->channels;
             channel_layout = avctx->channel_layout;
     #endif
 
             /* prepare audio output */
-            //打开音频设备
+            //调用audio_open打开sdl音频输出，实际打开的设备参数保存在audio_tgt，返回值表示输出设备的缓冲区大小
             if ((ret = audio_open(is, channel_layout, nb_channels, sample_rate, &is->audio_tgt)) < 0) {
                 goto fail;
             }
 
+            //SDL音频缓冲区大小(单位字节)
             is->audio_hw_buf_size = ret;
+            //audio_src一开始与audio_tgt是一样的，如果输出设备支持音轨参数
+            //那么audio_src可以一直保持与audio_tgt一致，否则将在后面代码中自动修正为音轨参数，并引入重采样机制
             is->audio_src = is->audio_tgt;
             is->audio_buf_size  = 0;
             is->audio_buf_index = 0;
