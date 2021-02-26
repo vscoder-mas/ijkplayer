@@ -124,7 +124,7 @@ typedef struct PacketQueue {
     //1. abort 0. run
     int abort_request;//是否要中止队列操作，用于安全快速退出播放
     int serial;//序列号，和MyAVPacketNode的serial作用相同，但改变的时序稍微有点不同
-    SDL_mutex *mutex;//用于维持PacketQueue的多线程安全(SDL_mutex可以按pthread_mutex_t理解）
+    SDL_mutex *mutex;//用于维持PacketQueue的多线程安全(SDL_mutex可以按pthread_mutex_t理解)
     SDL_cond *cond;//用于读、写线程相互通知(SDL_cond可以按pthread_cond_t理解)
 } PacketQueue;
 
@@ -1485,16 +1485,20 @@ static void video_display(VideoState *is) {
 }
 
 static double get_clock(Clock *c) {
-    if (*c->queue_serial != c->serial)
+    if (*c->queue_serial != c->serial) {
         return NAN;
+    }
+
     if (c->paused) {
         return c->pts;
     } else {
+        //time当前时间
         double time = av_gettime_relative() / 1000000.0;
         return c->pts_drift + time - (time - c->last_updated) * (1.0 - c->speed);
     }
 }
 
+//对时方法
 static void set_clock_at(Clock *c, double pts, int serial, double time) {
     c->pts = pts;
     c->last_updated = time;
@@ -1634,10 +1638,11 @@ static double compute_target_delay(double delay, VideoState *is) {
     double sync_threshold, diff = 0;
 
     /* update delay to follow master synchronisation source */
+    //只要主时钟不是video，就需要作同步校正
     if (get_master_sync_type(is) != AV_SYNC_VIDEO_MASTER) {
         /* if video is slave, we try to correct big delays by
            duplicating or deleting a frame */
-        // 视频时钟与同步时钟(如音频时钟)的差异，时钟值是上一帧pts值(实为：上一帧pts + 上一帧至今流逝的时间差)
+        // 视频时钟与同步时钟(如音频时钟)的差异，时钟值是上一帧pts值(实为:上一帧pts + 上一帧至今流逝的时间差)
         diff = get_clock(&is->vidclk) - get_master_clock(is);
         // delay是上一帧播放时长：当前帧(待播放的帧)播放时间与上一帧播放时间差理论值
         // diff是视频时钟与同步时钟的差值
@@ -1649,11 +1654,21 @@ static double compute_target_delay(double delay, VideoState *is) {
         // 若AV_SYNC_THRESHOLD_MIN < delay < AV_SYNC_THRESHOLD_MAX，则同步域值为delay
         sync_threshold = FFMAX(AV_SYNC_THRESHOLD_MIN, FFMIN(AV_SYNC_THRESHOLD_MAX, delay));
         if (!isnan(diff) && fabs(diff) < is->max_frame_duration) {
-            if (diff <= -sync_threshold)        // 视频时钟落后于同步时钟，且超过同步域值
-                delay = FFMAX(0, delay + diff); // 当前帧播放时刻落后于同步时钟(delay+diff<0)则delay=0(视频追赶，立即播放)，否则delay=delay+diff
-            else if (diff >= sync_threshold && delay > AV_SYNC_FRAMEDUP_THRESHOLD)  // 视频时钟超前于同步时钟，且超过同步域值，但上一帧播放时长超长
-                delay = delay + diff;           // 仅仅校正为delay=delay+diff，主要是AV_SYNC_FRAMEDUP_THRESHOLD参数的作用，不作同步补偿
-            else if (diff >= sync_threshold) {
+            // diff为0表示video clock与audio clock完全相同，完美同步;delay指传入参数，即lastvp的显示时长
+            // sync_threshold是建立一块区域，在这块区域内无需调整lastvp的显示时长，直接返回delay即可,也就是在这块区域内认为是准同步的
+            // 如果小于-sync_threshold，那就是视频播放较慢，需要适当丢帧。具体是返回一个最大为0的值; 根据前面frame_timer的图，至少应更新画面为vp
+            // 如果大于sync_threshold，那么视频播放太快，需要适当重复显示lastvp; 具体是返回2倍的delay，也就是2倍的lastvp显示时长，也就是让lastvp再显示一帧
+            // 如果不仅大于sync_threshold，而且超过了AV_SYNC_FRAMEDUP_THRESHOLD，那么返回delay+diff, 不仅diff大于sync_threshold，而且delay大于AV_SYNC_FRAMEDUP_THRESHOLD，
+            // 那么返回delay+diff; 之所以要区别对待，是因为AV_SYNC_FRAMEDUP_THRESHOLD是0.1，如果2*delay时间就有点久了
+            if (diff <= -sync_threshold) {
+                // 视频时钟落后于同步时钟，且超过同步域值
+                // 当前帧播放时刻落后于同步时钟(delay+diff<0)则delay=0(视频追赶，立即播放)，否则delay=delay+diff
+                delay = FFMAX(0, delay + diff);
+            } else if (diff >= sync_threshold && delay > AV_SYNC_FRAMEDUP_THRESHOLD) {
+                // 视频时钟超前于同步时钟，且超过同步域值，但上一帧播放时长超长
+                // 仅仅校正为delay=delay+diff，主要是AV_SYNC_FRAMEDUP_THRESHOLD参数的作用，不作同步补偿
+                delay = delay + diff;
+            } else if (diff >= sync_threshold) {
                 // 视频时钟超前于同步时钟，且超过同步域值
                 // 视频播放要放慢脚步，delay扩大至2倍
                 //假如当前帧的播放时间，也就是pts，超前于主时钟，那就需要加大延时
@@ -1665,6 +1680,7 @@ static double compute_target_delay(double delay, VideoState *is) {
     av_log(NULL, AV_LOG_TRACE, "video: delay=%0.3f A-V=%f\n",
             delay, -diff);
 
+    //值越大，画面走的越慢; 这样外层函数的timer就会立即超时，并丢弃至少一帧
     return delay;
 }
 
@@ -1688,6 +1704,7 @@ static double vp_duration(VideoState *is, CusFrame *vp, CusFrame *nextvp) {
 static void update_video_pts(VideoState *is, double pts, int64_t pos, int serial) {
     /* update current video pts */
     set_clock(&is->vidclk, pts, serial);
+    // 使用视频时钟更新外部时钟
     sync_clock_to_slave(&is->extclk, &is->vidclk);
 }
 
@@ -1738,8 +1755,9 @@ retry:
             }
 
             // lastvp和vp不是同一播放序列(一个seek会开始一个新播放序列)，将frame_timer更新为当前时间
-            if (lastvp->serial != vp->serial)
+            if (lastvp->serial != vp->serial) {
                 is->frame_timer = av_gettime_relative() / 1000000.0;
+            }
 
             // 暂停处理：不停播放上一帧图像
             if (is->paused)
@@ -1753,9 +1771,11 @@ retry:
 
             //获取当前时间(单位:秒)
             time = av_gettime_relative()/1000000.0;
-            // 当前帧播放时刻(is->frame_timer+delay)大于当前时刻(time)，表示播放时刻未到
-            //假如当前时间小于frame_timer + delay，也就是这帧改显示的时间超前，还没到，就直接返回
+            // 上一帧播放时刻(is->frame_timer+delay)大于当前时刻(time)，表示播放时刻未到
+            //假如当前时间小于frame_timer + delay，也就是这帧改显示的时间超前，还没到，就直接显示上一帧
             //如果当前系统时刻还未到达上一帧的结束时刻，那么还应该继续显示上一帧
+            //上一帧的显示时刻:对于更新后(is->frame_timer += delay)，则为上一帧应结束显示的时刻/当前帧显示时刻
+            //time1:系统时刻小于lastvp结束显示的时刻(frame_timer+dealy)，即虚线圆圈位置, 此时应该继续显示lastvp
             if (time < is->frame_timer + delay) {
                 *remaining_time = FFMIN(is->frame_timer + delay - time, *remaining_time);
                 goto display;
@@ -1768,6 +1788,7 @@ retry:
                 is->frame_timer = time;
             }
 
+            //更新video clock, 视频同步音频时没作用
             SDL_LockMutex(is->pictq.mutex);
             if (!isnan(vp->pts)) {
                 // 更新视频时钟：时间戳、时钟时间
@@ -1776,17 +1797,25 @@ retry:
             }
             SDL_UnlockMutex(is->pictq.mutex);
 
-            // 是否要丢弃未能及时播放的视频帧 //只有有nextvp才会丢帧
+            // 是否要丢弃未能及时播放的视频帧, 只有有nextvp才会丢帧
             if (frame_queue_nb_remaining(&is->pictq) > 1) {         // 队列中未显示帧数>1(只有一帧则不考虑丢帧)
                 CusFrame *nextvp = frame_queue_peek_next(&is->pictq);  // 下一帧：下一待显示的帧
                 duration = vp_duration(is, vp, nextvp);             // 当前帧vp播放时长 = nextvp->pts - vp->pts
                 // 1. 非步进模式
                 // 2. 启用framedrop，或当前video不是主时钟
                 // 3. 当前帧vp未能及时播放，即下一帧播放时刻(is->frame_timer+duration)小于当前系统时刻(time)
-                if(!is->step && (framedrop>0 || (framedrop && get_master_sync_type(is) != AV_SYNC_VIDEO_MASTER)) && time > is->frame_timer + duration){
+                //time3:系统时刻大于vp结束显示时刻(黑色圆圈位置，也是nextvp预计的开始显示时刻); 此时应该丢弃vp
+                if(!is->step
+                    && (framedrop > 0 || (framedrop && get_master_sync_type(is) != AV_SYNC_VIDEO_MASTER))
+                    && time > is->frame_timer + duration) {
                     is->frame_drops_late++;         // framedrop丢帧处理有两处：1) packet入队列前，2) frame未及时显示(此处)
                     frame_queue_next(&is->pictq);   // 删除上一帧已显示帧，即删除lastvp，读指针加1(从lastvp更新到vp)
+                    //回到函数开始位置，继续重试(这里不能直接while丢帧，因为很可能audio clock重新对时了，这样delay值需要重新计算)
                     goto retry;
+                } else {
+                    //time2:系统时刻大于lastvp的结束显示时刻，但小于vp的结束显示时刻(time < is->frame_timer + duration)
+                    //(vp的显示时间开始于虚线圆圈，结束于黑色圆圈); 此时既不重复显示lastvp，也不丢弃vp，即应显示vp
+                    //执行最后面的video_display(is);
                 }
             }
 
@@ -1948,7 +1977,7 @@ static int get_video_frame(VideoState *is, AVFrame *frame) {
         // 2) 当命令行带"-framedrop"选项时，framedrop值为1，无论何种同步方式，均丢弃失去同步的视频帧
         // 3) 当命令行带"-noframedrop"选项时，framedrop值为0，无论何种同步方式，均不丢弃失去同步的视频帧
         //控制是否丢帧的开关变量是framedrop，为1，则始终判断是否丢帧；为0，则始终不丢帧；为-1（默认值），则在主时钟不是video的时候，判断是否丢帧
-        if (framedrop>0 || (framedrop && get_master_sync_type(is) != AV_SYNC_VIDEO_MASTER)) {
+        if (framedrop > 0 || (framedrop && get_master_sync_type(is) != AV_SYNC_VIDEO_MASTER)) {
             if (frame->pts != AV_NOPTS_VALUE) {
                 double diff = dpts - get_master_clock(is);
                 if (!isnan(diff) && fabs(diff) < AV_NOSYNC_THRESHOLD &&
@@ -2474,6 +2503,7 @@ static int synchronize_audio(VideoState *is, int nb_samples) {
     int wanted_nb_samples = nb_samples;
 
     /* if not master, then we try to remove or add samples to correct the clock */
+    //只要主时钟不是audio，就需要作同步校正
     if (get_master_sync_type(is) != AV_SYNC_AUDIO_MASTER) {
         double diff, avg_diff;
         int min_nb_samples, max_nb_samples;
