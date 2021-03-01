@@ -3,6 +3,6 @@
     + pipenode -> func_run_sync 创建线程 enqueue avpacket
 
 2. ffplay Frame 关系
-    + FrameQueue -> Frame[] -> PacketQueue -> MyAVPacketList -> AVPacket
+    + FrameQueue -> Frame[] -> PacketQueue -> MyAVPacketNode -> AVPacket
 3. VideoState->auddec(Decoder)->queue = VideoState->audioq(PacketQueue)
 

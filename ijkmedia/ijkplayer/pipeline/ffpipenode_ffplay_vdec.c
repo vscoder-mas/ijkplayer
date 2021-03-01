@@ -22,6 +22,7 @@
  */
 
 #include "ffpipenode_ffplay_vdec.h"
+
 #include "../ff_ffpipenode.h"
 #include "../ff_ffplay.h"
 
@@ -29,31 +30,27 @@ struct IJKFF_Pipenode_Opaque {
     FFPlayer *ffp;
 };
 
-static void func_destroy(IJKFF_Pipenode *node)
-{
+static void func_destroy(IJKFF_Pipenode *node) {
     // do nothing
 }
 
-static int func_run_sync(IJKFF_Pipenode *node)
-{
+static int func_run_sync(IJKFF_Pipenode *node) {
     IJKFF_Pipenode_Opaque *opaque = node->opaque;
-
     return ffp_video_thread(opaque->ffp);
 }
 
-IJKFF_Pipenode *ffpipenode_create_video_decoder_from_ffplay(FFPlayer *ffp)
-{
+IJKFF_Pipenode *ffpipenode_create_video_decoder_from_ffplay(FFPlayer *ffp) {
     IJKFF_Pipenode *node = ffpipenode_alloc(sizeof(IJKFF_Pipenode_Opaque));
-    if (!node)
-        return node;
+    if (!node) return node;
 
     IJKFF_Pipenode_Opaque *opaque = node->opaque;
-    opaque->ffp         = ffp;
+    opaque->ffp = ffp;
 
-    node->func_destroy  = func_destroy;
+    node->func_destroy = func_destroy;
     node->func_run_sync = func_run_sync;
 
-    ffp_set_video_codec_info(ffp, AVCODEC_MODULE_NAME, avcodec_get_name(ffp->is->viddec.avctx->codec_id));
+    ffp_set_video_codec_info(ffp, AVCODEC_MODULE_NAME,
+                             avcodec_get_name(ffp->is->viddec.avctx->codec_id));
     ffp->stat.vdec_type = FFP_PROPV_DECODER_AVCODEC;
     return node;
 }

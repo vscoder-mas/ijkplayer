@@ -40,4 +40,5 @@ build/
 xcuserdata
 xcshareddata
 *.xccheckout
+.vscode/
 

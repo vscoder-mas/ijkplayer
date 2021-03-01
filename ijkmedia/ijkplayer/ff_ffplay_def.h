@@ -157,14 +157,14 @@ typedef struct GetImgInfo {
     struct SwsContext *frame_img_convert_ctx;
 } GetImgInfo;
 
-typedef struct MyAVPacketList {
+typedef struct MyAVPacketNode {
     AVPacket pkt;
-    struct MyAVPacketList *next;
+    struct MyAVPacketNode *next;
     int serial;
-} MyAVPacketList;
+} MyAVPacketNode;
 
 typedef struct PacketQueue {
-    MyAVPacketList *first_pkt, *last_pkt;
+    MyAVPacketNode *first_pkt, *last_pkt;
     int nb_packets;
     int size;
     int64_t duration;
@@ -172,7 +172,7 @@ typedef struct PacketQueue {
     int serial;
     SDL_mutex *mutex;
     SDL_cond *cond;
-    MyAVPacketList *recycle_pkt;
+    MyAVPacketNode *recycle_pkt;
     int recycle_count;
     int alloc_count;
 

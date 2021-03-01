@@ -24,29 +24,25 @@
 #include "ijkplayer_android.h"
 
 #include <assert.h>
-#include "ijksdl/android/ijksdl_android.h"
+
 #include "../ff_fferror.h"
 #include "../ff_ffplay.h"
 #include "../ijkplayer_internal.h"
 #include "../pipeline/ffpipeline_ffplay.h"
+#include "ijksdl/android/ijksdl_android.h"
 #include "pipeline/ffpipeline_android.h"
 
-IjkMediaPlayer *ijkmp_android_create(int(*msg_loop)(void*))
-{
+IjkMediaPlayer *ijkmp_android_create(int (*msg_loop)(void *)) {
     IjkMediaPlayer *mp = ijkmp_create(msg_loop);
-    if (!mp)
-        goto fail;
+    if (!mp) goto fail;
 
     mp->ffplayer->vout = SDL_VoutAndroid_CreateForAndroidSurface();
-    if (!mp->ffplayer->vout)
-        goto fail;
+    if (!mp->ffplayer->vout) goto fail;
 
     mp->ffplayer->pipeline = ffpipeline_create_from_android(mp->ffplayer);
-    if (!mp->ffplayer->pipeline)
-        goto fail;
+    if (!mp->ffplayer->pipeline) goto fail;
 
     ffpipeline_set_vout(mp->ffplayer->pipeline, mp->ffplayer->vout);
-
     return mp;
 
 fail:
@@ -54,31 +50,29 @@ fail:
     return NULL;
 }
 
-void ijkmp_android_set_surface_l(JNIEnv *env, IjkMediaPlayer *mp, jobject android_surface)
-{
-    if (!mp || !mp->ffplayer || !mp->ffplayer->vout)
-        return;
+void ijkmp_android_set_surface_l(JNIEnv *env, IjkMediaPlayer *mp,
+                                 jobject android_surface) {
+    if (!mp || !mp->ffplayer || !mp->ffplayer->vout) return;
 
     SDL_VoutAndroid_SetAndroidSurface(env, mp->ffplayer->vout, android_surface);
     ffpipeline_set_surface(env, mp->ffplayer->pipeline, android_surface);
 }
 
-void ijkmp_android_set_surface(JNIEnv *env, IjkMediaPlayer *mp, jobject android_surface)
-{
-    if (!mp)
-        return;
+void ijkmp_android_set_surface(JNIEnv *env, IjkMediaPlayer *mp,
+                               jobject android_surface) {
+    if (!mp) return;
 
-    MPTRACE("ijkmp_set_android_surface(surface=%p)", (void*)android_surface);
+    MPTRACE("ijkmp_set_android_surface(surface=%p)", (void *)android_surface);
     pthread_mutex_lock(&mp->mutex);
     ijkmp_android_set_surface_l(env, mp, android_surface);
     pthread_mutex_unlock(&mp->mutex);
-    MPTRACE("ijkmp_set_android_surface(surface=%p)=void", (void*)android_surface);
+    MPTRACE("ijkmp_set_android_surface(surface=%p)=void",
+            (void *)android_surface);
 }
 
-void ijkmp_android_set_volume(JNIEnv *env, IjkMediaPlayer *mp, float left, float right)
-{
-    if (!mp)
-        return;
+void ijkmp_android_set_volume(JNIEnv *env, IjkMediaPlayer *mp, float left,
+                              float right) {
+    if (!mp) return;
 
     MPTRACE("ijkmp_android_set_volume(%f, %f)", left, right);
     pthread_mutex_lock(&mp->mutex);
@@ -91,11 +85,9 @@ void ijkmp_android_set_volume(JNIEnv *env, IjkMediaPlayer *mp, float left, float
     MPTRACE("ijkmp_android_set_volume(%f, %f)=void", left, right);
 }
 
-int ijkmp_android_get_audio_session_id(JNIEnv *env, IjkMediaPlayer *mp)
-{
+int ijkmp_android_get_audio_session_id(JNIEnv *env, IjkMediaPlayer *mp) {
     int audio_session_id = 0;
-    if (!mp)
-        return audio_session_id;
+    if (!mp) return audio_session_id;
 
     MPTRACE("%s()", __func__);
     pthread_mutex_lock(&mp->mutex);
@@ -110,16 +102,18 @@ int ijkmp_android_get_audio_session_id(JNIEnv *env, IjkMediaPlayer *mp)
     return audio_session_id;
 }
 
-void ijkmp_android_set_mediacodec_select_callback(IjkMediaPlayer *mp, bool (*callback)(void *opaque, ijkmp_mediacodecinfo_context *mcc), void *opaque)
-{
-    if (!mp)
-        return;
+void ijkmp_android_set_mediacodec_select_callback(
+    IjkMediaPlayer *mp,
+    bool (*callback)(void *opaque, ijkmp_mediacodecinfo_context *mcc),
+    void *opaque) {
+    if (!mp) return;
 
     MPTRACE("ijkmp_android_set_mediacodec_select_callback()");
     pthread_mutex_lock(&mp->mutex);
 
     if (mp && mp->ffplayer && mp->ffplayer->pipeline) {
-        ffpipeline_set_mediacodec_select_callback(mp->ffplayer->pipeline, callback, opaque);
+        ffpipeline_set_mediacodec_select_callback(mp->ffplayer->pipeline,
+                                                  callback, opaque);
     }
 
     pthread_mutex_unlock(&mp->mutex);
