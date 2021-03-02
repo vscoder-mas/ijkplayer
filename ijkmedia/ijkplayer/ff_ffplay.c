@@ -354,10 +354,8 @@ static void decoder_init(Decoder *d, AVCodecContext *avctx, PacketQueue *queue,
     d->queue = queue;
     d->empty_queue_cond = empty_queue_cond;
     d->start_pts = AV_NOPTS_VALUE;
-
     d->first_frame_decoded_time = SDL_GetTickHR();
     d->first_frame_decoded = 0;
-
     SDL_ProfilerReset(&d->decode_profiler, -1);
 }
 
@@ -603,7 +601,7 @@ static int decoder_decode_frame(FFPlayer *ffp, Decoder *d, AVFrame *frame,
                 }
                 if (ret >= 0) return 1;
             } while (ret != AVERROR(EAGAIN));
-        }
+        } //if (d->queue->serial == d->pkt_serial) {
 
         do {
             if (d->queue->nb_packets == 0) SDL_CondSignal(d->empty_queue_cond);
@@ -856,7 +854,6 @@ static void video_image_display2(FFPlayer *ffp) {
     VideoState *is = ffp->is;
     Frame *vp;
     Frame *sp = NULL;
-
     vp = frame_queue_peek_last(&is->pictq);
 
     if (vp->bmp) {
@@ -885,6 +882,7 @@ static void video_image_display2(FFPlayer *ffp) {
                 }
             }
         }
+        
         if (ffp->render_wait_start && !ffp->start_on_prepared &&
             is->pause_req) {
             if (!ffp->first_video_frame_rendered) {
@@ -1414,6 +1412,7 @@ static void video_refresh(FFPlayer *opaque, double *remaining_time) {
             is->show_mode == SHOW_MODE_VIDEO && is->pictq.rindex_shown)
             video_display2(ffp);
     }
+
     is->force_refresh = 0;
     if (ffp->show_status) {
         static int64_t last_time;
@@ -1625,7 +1624,7 @@ static int queue_picture(FFPlayer *ffp, AVFrame *src_frame, double pts,
         is->accurate_seek_start_time = 0;
         video_accurate_seek_fail = 0;
         is->accurate_seek_vframe_pts = 0;
-    }
+    } //if (ffp->enable_accurate_seek && is->video_accurate_seek_req && !is->seek_req) {
 
 #if defined(DEBUG_SYNC)
     printf("frame_type=%c pts=%0.3f\n",
@@ -2355,7 +2354,7 @@ static int ffplay_video_thread(void *arg) {
             }
             av_frame_unref(frame);
             continue;
-        }
+        } //if (ffp->get_frame_mode) {
 
 #if CONFIG_AVFILTER
         if (last_w != frame->width || last_h != frame->height ||
@@ -2416,12 +2415,10 @@ static int ffplay_video_thread(void *arg) {
                 is->frame_last_filter_delay = 0;
             tb = av_buffersink_get_time_base(filt_out);
 #endif
-            duration =
-                (frame_rate.num && frame_rate.den
+            duration = (frame_rate.num && frame_rate.den
                      ? av_q2d((AVRational){frame_rate.den, frame_rate.num})
                      : 0);
-            pts =
-                (frame->pts == AV_NOPTS_VALUE) ? NAN : frame->pts * av_q2d(tb);
+            pts = (frame->pts == AV_NOPTS_VALUE) ? NAN : frame->pts * av_q2d(tb);
             ret = queue_picture(ffp, frame, pts, duration, frame->pkt_pos,
                                 is->viddec.pkt_serial);
             av_frame_unref(frame);
@@ -2430,7 +2427,7 @@ static int ffplay_video_thread(void *arg) {
 #endif
 
         if (ret < 0) goto the_end;
-    }
+    } //for (;;) {
 the_end:
 #if CONFIG_AVFILTER
     avfilter_graph_free(&graph);
@@ -3049,6 +3046,7 @@ static int stream_component_open(FFPlayer *ffp, int stream_index) {
     if ((ret = avcodec_open2(avctx, codec, &opts)) < 0) {
         goto fail;
     }
+
     if ((t = av_dict_get(opts, "", NULL, AV_DICT_IGNORE_SUFFIX))) {
         av_log(NULL, AV_LOG_ERROR, "Option %s not found.\n", t->key);
 #ifdef FFP_MERGE
@@ -4230,9 +4228,7 @@ FFPlayer *ffp_create() {
     ffp_reset_internal(ffp);
     ffp->av_class = &ffp_context_class;
     ffp->meta = ijkmeta_create();
-
     av_opt_set_defaults(ffp);
-
     return ffp;
 }
 

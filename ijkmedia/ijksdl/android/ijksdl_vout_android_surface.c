@@ -25,17 +25,17 @@
 #include "ijksdl_vout_android_surface.h"
 
 #include <android/native_window_jni.h>
+
 #include "../ijksdl_inc_internal.h"
 #include "ijksdl_android_jni.h"
 #include "ijksdl_vout_android_nativewindow.h"
 
-SDL_Vout *SDL_VoutAndroid_CreateForAndroidSurface()
-{
+SDL_Vout *SDL_VoutAndroid_CreateForAndroidSurface() {
     return SDL_VoutAndroid_CreateForANativeWindow();
 }
 
-void SDL_VoutAndroid_SetAndroidSurface(JNIEnv *env, SDL_Vout *vout, jobject android_surface)
-{
+void SDL_VoutAndroid_SetAndroidSurface(JNIEnv *env, SDL_Vout *vout,
+                                       jobject android_surface) {
     ANativeWindow *native_window = NULL;
     if (android_surface) {
         native_window = ANativeWindow_fromSurface(env, android_surface);
@@ -46,6 +46,5 @@ void SDL_VoutAndroid_SetAndroidSurface(JNIEnv *env, SDL_Vout *vout, jobject andr
     }
 
     SDL_VoutAndroid_SetNativeWindow(vout, native_window);
-    if (native_window)
-        ANativeWindow_release(native_window);
+    if (native_window) ANativeWindow_release(native_window);
 }

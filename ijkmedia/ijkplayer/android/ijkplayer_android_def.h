@@ -30,19 +30,19 @@
 
 //
 enum media_event_type {
-    MEDIA_NOP               = 0,        // interface test message
-    MEDIA_PREPARED          = 1,
+    MEDIA_NOP = 0,  // interface test message
+    MEDIA_PREPARED = 1,
     MEDIA_PLAYBACK_COMPLETE = 2,
-    MEDIA_BUFFERING_UPDATE  = 3,        // arg1 = percentage, arg2 = cached duration
-    MEDIA_SEEK_COMPLETE     = 4,
-    MEDIA_SET_VIDEO_SIZE    = 5,        // arg1 = width, arg2 = height
-    MEDIA_GET_IMG_STATE     = 6,        // arg1 = timestamp, arg2 = result code, obj = file name
-    MEDIA_TIMED_TEXT        = 99,       // not supported yet
-    MEDIA_ERROR             = 100,      // arg1, arg2
-    MEDIA_INFO              = 200,      // arg1, arg2
+    MEDIA_BUFFERING_UPDATE = 3,  // arg1 = percentage, arg2 = cached duration
+    MEDIA_SEEK_COMPLETE = 4,
+    MEDIA_SET_VIDEO_SIZE = 5,  // arg1 = width, arg2 = height
+    MEDIA_GET_IMG_STATE =
+        6,  // arg1 = timestamp, arg2 = result code, obj = file name
+    MEDIA_TIMED_TEXT = 99,  // not supported yet
+    MEDIA_ERROR = 100,      // arg1, arg2
+    MEDIA_INFO = 200,       // arg1, arg2
 
-
-    MEDIA_SET_VIDEO_SAR     = 10001,    // arg1 = sar.num, arg2 = sar.den
+    MEDIA_SET_VIDEO_SAR = 10001,  // arg1 = sar.num, arg2 = sar.den
 };
 
 // Generic error codes for the media player framework.  Errors are fatal, the
@@ -74,12 +74,12 @@ enum media_error_type {
     // 3xx
 
     // -xx
-    MEDIA_ERROR_IO          = -1004,
-    MEDIA_ERROR_MALFORMED   = -1007,
+    MEDIA_ERROR_IO = -1004,
+    MEDIA_ERROR_MALFORMED = -1007,
     MEDIA_ERROR_UNSUPPORTED = -1010,
-    MEDIA_ERROR_TIMED_OUT   = -110,
+    MEDIA_ERROR_TIMED_OUT = -110,
 
-    MEDIA_ERROR_IJK_PLAYER  = -10000,
+    MEDIA_ERROR_IJK_PLAYER = -10000,
 };
 
 // Info and warning codes for the media player framework.  These are non fatal,
@@ -119,8 +119,10 @@ enum media_info_type {
     MEDIA_INFO_NETWORK_BANDWIDTH = 703,
 
     // 8xx
-    // Bad interleaving means that a media has been improperly interleaved or not
-    // interleaved at all, e.g has all the video samples first then all the audio
+    // Bad interleaving means that a media has been improperly interleaved or
+    // not
+    // interleaved at all, e.g has all the video samples first then all the
+    // audio
     // ones. Video is playing but a lot of disk seek may be happening.
     MEDIA_INFO_BAD_INTERLEAVING = 800,
     // The media is not seekable (e.g live stream).
@@ -128,29 +130,28 @@ enum media_info_type {
     // New media metadata is available.
     MEDIA_INFO_METADATA_UPDATE = 802,
 
-    //9xx
+    // 9xx
     MEDIA_INFO_TIMED_TEXT_ERROR = 900,
 
-    //100xx
+    // 100xx
     MEDIA_INFO_VIDEO_ROTATION_CHANGED = 10001,
-    MEDIA_INFO_AUDIO_RENDERING_START  = 10002,
-    MEDIA_INFO_AUDIO_DECODED_START    = 10003,
-    MEDIA_INFO_VIDEO_DECODED_START    = 10004,
-    MEDIA_INFO_OPEN_INPUT             = 10005,
-    MEDIA_INFO_FIND_STREAM_INFO       = 10006,
-    MEDIA_INFO_COMPONENT_OPEN         = 10007,
+    MEDIA_INFO_AUDIO_RENDERING_START = 10002,
+    MEDIA_INFO_AUDIO_DECODED_START = 10003,
+    MEDIA_INFO_VIDEO_DECODED_START = 10004,
+    MEDIA_INFO_OPEN_INPUT = 10005,
+    MEDIA_INFO_FIND_STREAM_INFO = 10006,
+    MEDIA_INFO_COMPONENT_OPEN = 10007,
     MEDIA_INFO_VIDEO_SEEK_RENDERING_START = 10008,
     MEDIA_INFO_AUDIO_SEEK_RENDERING_START = 10009,
 
     MEDIA_INFO_MEDIA_ACCURATE_SEEK_COMPLETE = 10100,
 };
 
-typedef struct ijkmp_mediacodecinfo_context
-{
-    char mime_type[128];    //< in
-    int  profile;           //< in
-    int  level;             //< in
-    char codec_name[128];   //< out
+typedef struct ijkmp_mediacodecinfo_context {
+    char mime_type[128];   //< in
+    int profile;           //< in
+    int level;             //< in
+    char codec_name[128];  //< out
 } ijkmp_mediacodecinfo_context;
 
 #endif

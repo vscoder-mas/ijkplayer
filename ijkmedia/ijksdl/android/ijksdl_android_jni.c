@@ -25,38 +25,34 @@
 #include "ijksdl_android_jni.h"
 
 #include <unistd.h>
-#include "j4a/class/android/os/Build.h"
-#include "ijksdl_inc_internal_android.h"
-#include "ijksdl_codec_android_mediaformat_java.h"
+
 #include "ijksdl_codec_android_mediacodec_java.h"
+#include "ijksdl_codec_android_mediaformat_java.h"
+#include "ijksdl_inc_internal_android.h"
+#include "j4a/class/android/os/Build.h"
 
 static JavaVM *g_jvm;
 
 static pthread_key_t g_thread_key;
 static pthread_once_t g_key_once = PTHREAD_ONCE_INIT;
 
-JavaVM *SDL_JNI_GetJvm()
-{
-    return g_jvm;
-}
+JavaVM *SDL_JNI_GetJvm() { return g_jvm; }
 
-static void SDL_JNI_ThreadDestroyed(void* value)
-{
-    JNIEnv *env = (JNIEnv*) value;
+static void SDL_JNI_ThreadDestroyed(void *value) {
+    JNIEnv *env = (JNIEnv *)value;
     if (env != NULL) {
-        ALOGE("%s: [%d] didn't call SDL_JNI_DetachThreadEnv() explicity\n", __func__, (int)gettid());
+        ALOGE("%s: [%d] didn't call SDL_JNI_DetachThreadEnv() explicity\n",
+              __func__, (int)gettid());
         (*g_jvm)->DetachCurrentThread(g_jvm);
         pthread_setspecific(g_thread_key, NULL);
     }
 }
 
-static void make_thread_key()
-{
+static void make_thread_key() {
     pthread_key_create(&g_thread_key, SDL_JNI_ThreadDestroyed);
 }
 
-jint SDL_JNI_SetupThreadEnv(JNIEnv **p_env)
-{
+jint SDL_JNI_SetupThreadEnv(JNIEnv **p_env) {
     JavaVM *jvm = g_jvm;
     if (!jvm) {
         ALOGE("SDL_JNI_GetJvm: AttachCurrentThread: NULL jvm");
@@ -65,7 +61,7 @@ jint SDL_JNI_SetupThreadEnv(JNIEnv **p_env)
 
     pthread_once(&g_key_once, make_thread_key);
 
-    JNIEnv *env = (JNIEnv*) pthread_getspecific(g_thread_key);
+    JNIEnv *env = (JNIEnv *)pthread_getspecific(g_thread_key);
     if (env) {
         *p_env = env;
         return 0;
@@ -80,8 +76,7 @@ jint SDL_JNI_SetupThreadEnv(JNIEnv **p_env)
     return -1;
 }
 
-void SDL_JNI_DetachThreadEnv()
-{
+void SDL_JNI_DetachThreadEnv() {
     JavaVM *jvm = g_jvm;
 
     ALOGI("%s: [%d]\n", __func__, (int)gettid());
@@ -89,18 +84,16 @@ void SDL_JNI_DetachThreadEnv()
     pthread_once(&g_key_once, make_thread_key);
 
     JNIEnv *env = pthread_getspecific(g_thread_key);
-    if (!env)
-        return;
+    if (!env) return;
     pthread_setspecific(g_thread_key, NULL);
 
-    if ((*jvm)->DetachCurrentThread(jvm) == JNI_OK)
-        return;
+    if ((*jvm)->DetachCurrentThread(jvm) == JNI_OK) return;
 
     return;
 }
 
-int SDL_JNI_ThrowException(JNIEnv* env, const char* className, const char* msg)
-{
+int SDL_JNI_ThrowException(JNIEnv *env, const char *className,
+                           const char *msg) {
     if ((*env)->ExceptionCheck(env)) {
         jthrowable exception = (*env)->ExceptionOccurred(env);
         (*env)->ExceptionClear(env);
@@ -126,18 +119,16 @@ int SDL_JNI_ThrowException(JNIEnv* env, const char* className, const char* msg)
 
     return 0;
 fail:
-    if (exceptionClass)
-        (*env)->DeleteLocalRef(env, exceptionClass);
+    if (exceptionClass) (*env)->DeleteLocalRef(env, exceptionClass);
     return -1;
 }
 
-int SDL_JNI_ThrowIllegalStateException(JNIEnv *env, const char* msg)
-{
+int SDL_JNI_ThrowIllegalStateException(JNIEnv *env, const char *msg) {
     return SDL_JNI_ThrowException(env, "java/lang/IllegalStateException", msg);
 }
 
-jobject SDL_JNI_NewObjectAsGlobalRef(JNIEnv *env, jclass clazz, jmethodID methodID, ...)
-{
+jobject SDL_JNI_NewObjectAsGlobalRef(JNIEnv *env, jclass clazz,
+                                     jmethodID methodID, ...) {
     va_list args;
     va_start(args, methodID);
 
@@ -152,30 +143,23 @@ jobject SDL_JNI_NewObjectAsGlobalRef(JNIEnv *env, jclass clazz, jmethodID method
     return global_object;
 }
 
-void SDL_JNI_DeleteGlobalRefP(JNIEnv *env, jobject *obj_ptr)
-{
-    if (!obj_ptr || !*obj_ptr)
-        return;
+void SDL_JNI_DeleteGlobalRefP(JNIEnv *env, jobject *obj_ptr) {
+    if (!obj_ptr || !*obj_ptr) return;
 
     (*env)->DeleteGlobalRef(env, *obj_ptr);
     *obj_ptr = NULL;
 }
 
-void SDL_JNI_DeleteLocalRefP(JNIEnv *env, jobject *obj_ptr)
-{
-    if (!obj_ptr || !*obj_ptr)
-        return;
+void SDL_JNI_DeleteLocalRefP(JNIEnv *env, jobject *obj_ptr) {
+    if (!obj_ptr || !*obj_ptr) return;
 
     (*env)->DeleteLocalRef(env, *obj_ptr);
     *obj_ptr = NULL;
 }
 
-
-int SDL_Android_GetApiLevel()
-{
+int SDL_Android_GetApiLevel() {
     static int SDK_INT = 0;
-    if (SDK_INT > 0)
-        return SDK_INT;
+    if (SDK_INT > 0) return SDK_INT;
 
     JNIEnv *env = NULL;
     if (JNI_OK != SDL_JNI_SetupThreadEnv(&env)) {
@@ -195,14 +179,12 @@ int SDL_Android_GetApiLevel()
 #endif
 }
 
-
-JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved)
-{
+JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
     int retval;
-    JNIEnv* env = NULL;
+    JNIEnv *env = NULL;
 
     g_jvm = vm;
-    if ((*vm)->GetEnv(vm, (void**) &env, JNI_VERSION_1_4) != JNI_OK) {
+    if ((*vm)->GetEnv(vm, (void **)&env, JNI_VERSION_1_4) != JNI_OK) {
         return -1;
     }
 
@@ -212,6 +194,4 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved)
     return JNI_VERSION_1_4;
 }
 
-JNIEXPORT void JNICALL JNI_OnUnload(JavaVM *jvm, void *reserved)
-{
-}
+JNIEXPORT void JNICALL JNI_OnUnload(JavaVM *jvm, void *reserved) {}

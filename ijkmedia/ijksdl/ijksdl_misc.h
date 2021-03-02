@@ -25,43 +25,40 @@
 #ifndef IJKSDL__IJKSDL_MISC_H
 #define IJKSDL__IJKSDL_MISC_H
 
-#include <stdlib.h>
 #include <memory.h>
+#include <stdlib.h>
 
 #ifndef IJKMAX
-#define IJKMAX(a, b)    ((a) > (b) ? (a) : (b))
+#define IJKMAX(a, b) ((a) > (b) ? (a) : (b))
 #endif
 
 #ifndef IJKMIN
-#define IJKMIN(a, b)    ((a) < (b) ? (a) : (b))
+#define IJKMIN(a, b) ((a) < (b) ? (a) : (b))
 #endif
 
 #ifndef IJKALIGN
-#define IJKALIGN(x, align) ((( x ) + (align) - 1) / (align) * (align))
+#define IJKALIGN(x, align) (((x) + (align)-1) / (align) * (align))
 #endif
 
 #define IJK_CHECK_RET(condition__, retval__, ...) \
-    if (!(condition__)) { \
-        ALOGE(__VA_ARGS__); \
-        return (retval__); \
+    if (!(condition__)) {                         \
+        ALOGE(__VA_ARGS__);                       \
+        return (retval__);                        \
     }
 
 #ifndef NELEM
-#define NELEM(x) ((int) (sizeof(x) / sizeof((x)[0])))
+#define NELEM(x) ((int)(sizeof(x) / sizeof((x)[0])))
 #endif
 
-inline static void *mallocz(size_t size)
-{
+inline static void *mallocz(size_t size) {
     void *mem = malloc(size);
-    if (!mem)
-        return mem;
+    if (!mem) return mem;
 
     memset(mem, 0, size);
     return mem;
 }
 
-inline static void freep(void **mem)
-{
+inline static void freep(void **mem) {
     if (mem && *mem) {
         free(*mem);
         *mem = NULL;

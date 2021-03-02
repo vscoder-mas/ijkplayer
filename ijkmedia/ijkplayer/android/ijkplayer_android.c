@@ -33,15 +33,19 @@
 #include "pipeline/ffpipeline_android.h"
 
 IjkMediaPlayer *ijkmp_android_create(int (*msg_loop)(void *)) {
+    // 创建IjkMediaPlayer, FFPlayer
     IjkMediaPlayer *mp = ijkmp_create(msg_loop);
     if (!mp) goto fail;
 
+    // 创建SDL_Vout
     mp->ffplayer->vout = SDL_VoutAndroid_CreateForAndroidSurface();
     if (!mp->ffplayer->vout) goto fail;
 
+    // 创建IJKFF_Pipeline
     mp->ffplayer->pipeline = ffpipeline_create_from_android(mp->ffplayer);
     if (!mp->ffplayer->pipeline) goto fail;
 
+    // 互相绑定
     ffpipeline_set_vout(mp->ffplayer->pipeline, mp->ffplayer->vout);
     return mp;
 

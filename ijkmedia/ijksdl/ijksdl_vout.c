@@ -23,17 +23,15 @@
  */
 
 #include "ijksdl_vout.h"
-#include <stdlib.h>
 
 #include <assert.h>
+#include <stdlib.h>
 #if defined(__ANDROID__)
 #include <android/native_window_jni.h>
 #endif
 
-void SDL_VoutFree(SDL_Vout *vout)
-{
-    if (!vout)
-        return;
+void SDL_VoutFree(SDL_Vout *vout) {
+    if (!vout) return;
 
     if (vout->free_l) {
         vout->free_l(vout);
@@ -42,60 +40,49 @@ void SDL_VoutFree(SDL_Vout *vout)
     }
 }
 
-void SDL_VoutFreeP(SDL_Vout **pvout)
-{
-    if (!pvout)
-        return;
+void SDL_VoutFreeP(SDL_Vout **pvout) {
+    if (!pvout) return;
 
     SDL_VoutFree(*pvout);
     *pvout = NULL;
 }
 
-int SDL_VoutDisplayYUVOverlay(SDL_Vout *vout, SDL_VoutOverlay *overlay)
-{
+int SDL_VoutDisplayYUVOverlay(SDL_Vout *vout, SDL_VoutOverlay *overlay) {
     if (vout && overlay && vout->display_overlay)
         return vout->display_overlay(vout, overlay);
 
     return -1;
 }
 
-int SDL_VoutSetOverlayFormat(SDL_Vout *vout, Uint32 overlay_format)
-{
-    if (!vout)
-        return -1;
+int SDL_VoutSetOverlayFormat(SDL_Vout *vout, Uint32 overlay_format) {
+    if (!vout) return -1;
 
     vout->overlay_format = overlay_format;
     return 0;
 }
 
-SDL_VoutOverlay *SDL_Vout_CreateOverlay(int width, int height, int frame_format, SDL_Vout *vout)
-{
+SDL_VoutOverlay *SDL_Vout_CreateOverlay(int width, int height, int frame_format,
+                                        SDL_Vout *vout) {
     if (vout && vout->create_overlay)
         return vout->create_overlay(width, height, frame_format, vout);
 
     return NULL;
 }
 
-int SDL_VoutLockYUVOverlay(SDL_VoutOverlay *overlay)
-{
+int SDL_VoutLockYUVOverlay(SDL_VoutOverlay *overlay) {
     if (overlay && overlay->lock)
         return overlay->lock(overlay);
+    return -1;
+}
+
+int SDL_VoutUnlockYUVOverlay(SDL_VoutOverlay *overlay) {
+    if (overlay && overlay->unlock) return overlay->unlock(overlay);
 
     return -1;
 }
 
-int SDL_VoutUnlockYUVOverlay(SDL_VoutOverlay *overlay)
-{
-    if (overlay && overlay->unlock)
-        return overlay->unlock(overlay);
-
-    return -1;
-}
-
-void SDL_VoutFreeYUVOverlay(SDL_VoutOverlay *overlay)
-{
-    if (!overlay)
-        return;
+void SDL_VoutFreeYUVOverlay(SDL_VoutOverlay *overlay) {
+    if (!overlay) return;
 
     if (overlay->free_l) {
         overlay->free_l(overlay);
@@ -104,16 +91,13 @@ void SDL_VoutFreeYUVOverlay(SDL_VoutOverlay *overlay)
     }
 }
 
-void SDL_VoutUnrefYUVOverlay(SDL_VoutOverlay *overlay)
-{
-    if (overlay && overlay->unref)
-        overlay->unref(overlay);
+void SDL_VoutUnrefYUVOverlay(SDL_VoutOverlay *overlay) {
+    if (overlay && overlay->unref) overlay->unref(overlay);
 }
 
-int SDL_VoutFillFrameYUVOverlay(SDL_VoutOverlay *overlay, const AVFrame *frame)
-{
-    if (!overlay || !overlay->func_fill_frame)
-        return -1;
+int SDL_VoutFillFrameYUVOverlay(SDL_VoutOverlay *overlay,
+                                const AVFrame *frame) {
+    if (!overlay || !overlay->func_fill_frame) return -1;
 
     return overlay->func_fill_frame(overlay, frame);
 }

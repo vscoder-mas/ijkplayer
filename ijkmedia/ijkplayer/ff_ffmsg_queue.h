@@ -51,21 +51,17 @@ typedef struct MessageQueue {
     int alloc_count;
 } MessageQueue;
 
-inline static void msg_free_res(AVMessage *msg)
-{
-    if (!msg || !msg->obj)
-        return;
+inline static void msg_free_res(AVMessage *msg) {
+    if (!msg || !msg->obj) return;
     assert(msg->free_l);
     msg->free_l(msg->obj);
     msg->obj = NULL;
 }
 
-inline static int msg_queue_put_private(MessageQueue *q, AVMessage *msg)
-{
+inline static int msg_queue_put_private(MessageQueue *q, AVMessage *msg) {
     AVMessage *msg1;
 
-    if (q->abort_request)
-        return -1;
+    if (q->abort_request) return -1;
 
 #ifdef FFP_MERGE
     msg1 = av_malloc(sizeof(AVMessage));
@@ -81,12 +77,12 @@ inline static int msg_queue_put_private(MessageQueue *q, AVMessage *msg)
 #ifdef FFP_SHOW_MSG_RECYCLE
     int total_count = q->recycle_count + q->alloc_count;
     if (!(total_count % 10)) {
-        av_log(NULL, AV_LOG_DEBUG, "msg-recycle \t%d + \t%d = \t%d\n", q->recycle_count, q->alloc_count, total_count);
+        av_log(NULL, AV_LOG_DEBUG, "msg-recycle \t%d + \t%d = \t%d\n",
+               q->recycle_count, q->alloc_count, total_count);
     }
 #endif
 #endif
-    if (!msg1)
-        return -1;
+    if (!msg1) return -1;
 
     *msg1 = *msg;
     msg1->next = NULL;
@@ -101,32 +97,26 @@ inline static int msg_queue_put_private(MessageQueue *q, AVMessage *msg)
     return 0;
 }
 
-inline static int msg_queue_put(MessageQueue *q, AVMessage *msg)
-{
+inline static int msg_queue_put(MessageQueue *q, AVMessage *msg) {
     int ret;
-
     SDL_LockMutex(q->mutex);
     ret = msg_queue_put_private(q, msg);
     SDL_UnlockMutex(q->mutex);
-
     return ret;
 }
 
-inline static void msg_init_msg(AVMessage *msg)
-{
+inline static void msg_init_msg(AVMessage *msg) {
     memset(msg, 0, sizeof(AVMessage));
 }
 
-inline static void msg_queue_put_simple1(MessageQueue *q, int what)
-{
+inline static void msg_queue_put_simple1(MessageQueue *q, int what) {
     AVMessage msg;
     msg_init_msg(&msg);
     msg.what = what;
     msg_queue_put(q, &msg);
 }
 
-inline static void msg_queue_put_simple2(MessageQueue *q, int what, int arg1)
-{
+inline static void msg_queue_put_simple2(MessageQueue *q, int what, int arg1) {
     AVMessage msg;
     msg_init_msg(&msg);
     msg.what = what;
@@ -134,8 +124,8 @@ inline static void msg_queue_put_simple2(MessageQueue *q, int what, int arg1)
     msg_queue_put(q, &msg);
 }
 
-inline static void msg_queue_put_simple3(MessageQueue *q, int what, int arg1, int arg2)
-{
+inline static void msg_queue_put_simple3(MessageQueue *q, int what, int arg1,
+                                         int arg2) {
     AVMessage msg;
     msg_init_msg(&msg);
     msg.what = what;
@@ -144,13 +134,10 @@ inline static void msg_queue_put_simple3(MessageQueue *q, int what, int arg1, in
     msg_queue_put(q, &msg);
 }
 
-inline static void msg_obj_free_l(void *obj)
-{
-    av_free(obj);
-}
+inline static void msg_obj_free_l(void *obj) { av_free(obj); }
 
-inline static void msg_queue_put_simple4(MessageQueue *q, int what, int arg1, int arg2, void *obj, int obj_len)
-{
+inline static void msg_queue_put_simple4(MessageQueue *q, int what, int arg1,
+                                         int arg2, void *obj, int obj_len) {
     AVMessage msg;
     msg_init_msg(&msg);
     msg.what = what;
@@ -162,16 +149,14 @@ inline static void msg_queue_put_simple4(MessageQueue *q, int what, int arg1, in
     msg_queue_put(q, &msg);
 }
 
-inline static void msg_queue_init(MessageQueue *q)
-{
+inline static void msg_queue_init(MessageQueue *q) {
     memset(q, 0, sizeof(MessageQueue));
     q->mutex = SDL_CreateMutex();
     q->cond = SDL_CreateCond();
     q->abort_request = 1;
 }
 
-inline static void msg_queue_flush(MessageQueue *q)
-{
+inline static void msg_queue_flush(MessageQueue *q) {
     AVMessage *msg, *msg1;
 
     SDL_LockMutex(q->mutex);
@@ -190,15 +175,13 @@ inline static void msg_queue_flush(MessageQueue *q)
     SDL_UnlockMutex(q->mutex);
 }
 
-inline static void msg_queue_destroy(MessageQueue *q)
-{
+inline static void msg_queue_destroy(MessageQueue *q) {
     msg_queue_flush(q);
 
     SDL_LockMutex(q->mutex);
-    while(q->recycle_msg) {
+    while (q->recycle_msg) {
         AVMessage *msg = q->recycle_msg;
-        if (msg)
-            q->recycle_msg = msg->next;
+        if (msg) q->recycle_msg = msg->next;
         msg_free_res(msg);
         av_freep(&msg);
     }
@@ -208,8 +191,7 @@ inline static void msg_queue_destroy(MessageQueue *q)
     SDL_DestroyCond(q->cond);
 }
 
-inline static void msg_queue_abort(MessageQueue *q)
-{
+inline static void msg_queue_abort(MessageQueue *q) {
     SDL_LockMutex(q->mutex);
 
     q->abort_request = 1;
@@ -219,8 +201,7 @@ inline static void msg_queue_abort(MessageQueue *q)
     SDL_UnlockMutex(q->mutex);
 }
 
-inline static void msg_queue_start(MessageQueue *q)
-{
+inline static void msg_queue_start(MessageQueue *q) {
     SDL_LockMutex(q->mutex);
     q->abort_request = 0;
 
@@ -232,8 +213,7 @@ inline static void msg_queue_start(MessageQueue *q)
 }
 
 /* return < 0 if aborted, 0 if no msg and > 0 if msg.  */
-inline static int msg_queue_get(MessageQueue *q, AVMessage *msg, int block)
-{
+inline static int msg_queue_get(MessageQueue *q, AVMessage *msg, int block) {
     AVMessage *msg1;
     int ret;
 
@@ -248,8 +228,7 @@ inline static int msg_queue_get(MessageQueue *q, AVMessage *msg, int block)
         msg1 = q->first_msg;
         if (msg1) {
             q->first_msg = msg1->next;
-            if (!q->first_msg)
-                q->last_msg = NULL;
+            if (!q->first_msg) q->last_msg = NULL;
             q->nb_messages--;
             *msg = *msg1;
             msg1->obj = NULL;
@@ -272,8 +251,7 @@ inline static int msg_queue_get(MessageQueue *q, AVMessage *msg, int block)
     return ret;
 }
 
-inline static void msg_queue_remove(MessageQueue *q, int what)
-{
+inline static void msg_queue_remove(MessageQueue *q, int what) {
     AVMessage **p_msg, *msg, *last_msg;
     SDL_LockMutex(q->mutex);
 

@@ -27,13 +27,12 @@
 
 #include <stdlib.h>
 #include <string.h>
+
 #include "ijksdl_vout.h"
 
-inline static SDL_Vout *SDL_Vout_CreateInternal(size_t opaque_size)
-{
-    SDL_Vout *vout = (SDL_Vout*) calloc(1, sizeof(SDL_Vout));
-    if (!vout)
-        return NULL;
+inline static SDL_Vout *SDL_Vout_CreateInternal(size_t opaque_size) {
+    SDL_Vout *vout = (SDL_Vout *)calloc(1, sizeof(SDL_Vout));
+    if (!vout) return NULL;
 
     vout->opaque = calloc(1, opaque_size);
     if (!vout->opaque) {
@@ -51,10 +50,8 @@ inline static SDL_Vout *SDL_Vout_CreateInternal(size_t opaque_size)
     return vout;
 }
 
-inline static void SDL_Vout_FreeInternal(SDL_Vout *vout)
-{
-    if (!vout)
-        return;
+inline static void SDL_Vout_FreeInternal(SDL_Vout *vout) {
+    if (!vout) return;
 
     if (vout->mutex) {
         SDL_DestroyMutex(vout->mutex);
@@ -65,11 +62,11 @@ inline static void SDL_Vout_FreeInternal(SDL_Vout *vout)
     free(vout);
 }
 
-inline static SDL_VoutOverlay *SDL_VoutOverlay_CreateInternal(size_t opaque_size)
-{
-    SDL_VoutOverlay *overlay = (SDL_VoutOverlay*) calloc(1, sizeof(SDL_VoutOverlay));
-    if (!overlay)
-        return NULL;
+inline static SDL_VoutOverlay *SDL_VoutOverlay_CreateInternal(
+    size_t opaque_size) {
+    SDL_VoutOverlay *overlay =
+        (SDL_VoutOverlay *)calloc(1, sizeof(SDL_VoutOverlay));
+    if (!overlay) return NULL;
 
     overlay->opaque = calloc(1, opaque_size);
     if (!overlay->opaque) {
@@ -79,13 +76,10 @@ inline static SDL_VoutOverlay *SDL_VoutOverlay_CreateInternal(size_t opaque_size
     return overlay;
 }
 
-inline static void SDL_VoutOverlay_FreeInternal(SDL_VoutOverlay *overlay)
-{
-    if (!overlay)
-        return;
+inline static void SDL_VoutOverlay_FreeInternal(SDL_VoutOverlay *overlay) {
+    if (!overlay) return;
 
-    if (overlay->opaque)
-        free(overlay->opaque);
+    if (overlay->opaque) free(overlay->opaque);
 
     memset(overlay, 0, sizeof(SDL_VoutOverlay));
     free(overlay);
