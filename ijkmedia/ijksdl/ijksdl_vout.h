@@ -38,6 +38,7 @@ struct SDL_VoutOverlay {
     int h;           /**< Read-only */
     Uint32 format;   /**< Read-only */
     int planes;      /**< Read-only */
+    //最终显示的数据源
     Uint16 *pitches; /**< in bytes, Read-only */
     Uint8 **pixels;  /**< Read-write */
 
@@ -60,7 +61,6 @@ typedef struct SDL_Vout_Opaque SDL_Vout_Opaque;
 typedef struct SDL_Vout SDL_Vout;
 struct SDL_Vout {
     SDL_mutex *mutex;
-
     SDL_Class *opaque_class;
     SDL_Vout_Opaque *opaque;
     SDL_VoutOverlay *(*create_overlay)(int width, int height, int frame_format,

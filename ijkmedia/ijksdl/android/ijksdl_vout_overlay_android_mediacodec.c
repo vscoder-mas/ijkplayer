@@ -137,8 +137,7 @@ SDL_VoutOverlay *SDL_VoutAMediaCodec_CreateOverlay(int width, int height,
     SDLTRACE(
         "SDL_VoutAMediaCodec_CreateOverlay(w=%d, h=%d, fmt=_AMC vout=%p)\n",
         width, height, vout);
-    SDL_VoutOverlay *overlay =
-        SDL_VoutOverlay_CreateInternal(sizeof(SDL_VoutOverlay_Opaque));
+    SDL_VoutOverlay *overlay = SDL_VoutOverlay_CreateInternal(sizeof(SDL_VoutOverlay_Opaque));
     if (!overlay) {
         ALOGE("overlay allocation failed");
         return NULL;

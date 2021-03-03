@@ -312,7 +312,6 @@ static EGLBoolean IJK_EGL_display_internal(IJK_EGL *egl,
     }
 
     eglSwapBuffers(egl->display, egl->surface);
-
     return EGL_TRUE;
 }
 

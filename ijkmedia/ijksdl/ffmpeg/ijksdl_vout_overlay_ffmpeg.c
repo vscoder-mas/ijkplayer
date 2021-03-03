@@ -37,18 +37,15 @@
 
 struct SDL_VoutOverlay_Opaque {
     SDL_mutex *mutex;
-
     AVFrame *managed_frame;
     AVBufferRef *frame_buffer;
     int planes;
-
     AVFrame *linked_frame;
 
     Uint16 pitches[AV_NUM_DATA_POINTERS];
     Uint8 *pixels[AV_NUM_DATA_POINTERS];
 
     int no_neon_warned;
-
     struct SwsContext *img_convert_ctx;
     int sws_flags;
 };
@@ -95,6 +92,23 @@ static AVFrame *opaque_obtain_managed_frame_buffer(
     SDL_VoutOverlay_Opaque *opaque) {
     if (opaque->frame_buffer != NULL) return opaque->managed_frame;
 
+    /*
+        AVFrame *pFrameYUV420P = av_frame_alloc();
+        int num = av_image_get_buffer_size(
+            AV_PIX_FMT_YUV420P,
+            video->avCodecContext->width,
+            video->avCodecContext->height,
+            1);
+        uint8_t *buffer = static_cast<uint8_t *>(av_malloc(num * sizeof(uint8_t)));
+        av_image_fill_arrays(
+            pFrameYUV420P->data,
+            pFrameYUV420P->linesize,
+            buffer,
+            AV_PIX_FMT_YUV420P,
+            video->avCodecContext->width,
+            video->avCodecContext->height,
+            1);
+    */
     AVFrame *managed_frame = opaque->managed_frame;
     int frame_bytes = av_image_get_buffer_size(
         managed_frame->format, managed_frame->width, managed_frame->height, 1);
@@ -135,6 +149,8 @@ static void overlay_fill(SDL_VoutOverlay *overlay, AVFrame *frame, int planes) {
     overlay->planes = planes;
 
     for (int i = 0; i < AV_NUM_DATA_POINTERS; ++i) {
+        //overlay->pitches = opaque->pitches;
+        //overlay->pixels = opaque->pixels;
         overlay->pixels[i] = frame->data[i];
         overlay->pitches[i] = frame->linesize[i];
     }
@@ -154,12 +170,13 @@ static int func_fill_frame(SDL_VoutOverlay *overlay, const AVFrame *frame) {
     assert(overlay);
     SDL_VoutOverlay_Opaque *opaque = overlay->opaque;
     AVFrame swscale_dst_pic = {{0}};
-
     av_frame_unref(opaque->linked_frame);
 
     int need_swap_uv = 0;
     int use_linked_frame = 0;
     enum AVPixelFormat dst_format = AV_PIX_FMT_NONE;
+
+    //1. 根据format决定后面的填充方法
     switch (overlay->format) {
         case SDL_FCC_YV12:
             need_swap_uv = 1;
@@ -202,11 +219,11 @@ static int func_fill_frame(SDL_VoutOverlay *overlay, const AVFrame *frame) {
             return -1;
     }
 
+    //2. 准备内部frame用于填充;如果是use_linked_frame，则引用输入参数frame;否则开辟内存，存放到managed_frame
     // setup frame
     if (use_linked_frame) {
         // linked frame
         av_frame_ref(opaque->linked_frame, frame);
-
         overlay_fill(overlay, opaque->linked_frame, opaque->planes);
 
         if (need_swap_uv)
@@ -220,7 +237,6 @@ static int func_fill_frame(SDL_VoutOverlay *overlay, const AVFrame *frame) {
         }
 
         overlay_fill(overlay, opaque->managed_frame, opaque->planes);
-
         // setup frame managed
         for (int i = 0; i < overlay->planes; ++i) {
             swscale_dst_pic.data[i] = overlay->pixels[i];
@@ -305,8 +321,7 @@ SDL_VoutOverlay *SDL_VoutFFmpeg_CreateOverlay(int width, int height,
              width, height, (const char *)&overlay_format, overlay_format,
              display);
 
-    SDL_VoutOverlay *overlay =
-        SDL_VoutOverlay_CreateInternal(sizeof(SDL_VoutOverlay_Opaque));
+    SDL_VoutOverlay *overlay = SDL_VoutOverlay_CreateInternal(sizeof(SDL_VoutOverlay_Opaque));
     if (!overlay) {
         ALOGE("overlay allocation failed");
         return NULL;
@@ -315,7 +330,6 @@ SDL_VoutOverlay *SDL_VoutFFmpeg_CreateOverlay(int width, int height,
     SDL_VoutOverlay_Opaque *opaque = overlay->opaque;
     opaque->mutex = SDL_CreateMutex();
     opaque->sws_flags = SWS_BILINEAR;
-
     overlay->opaque_class = &g_vout_overlay_ffmpeg_class;
     overlay->format = overlay_format;
     overlay->pitches = opaque->pitches;
@@ -399,14 +413,12 @@ SDL_VoutOverlay *SDL_VoutFFmpeg_CreateOverlay(int width, int height,
             goto fail;
     }
 
-    opaque->managed_frame =
-        opaque_setup_frame(opaque, ff_format, buf_width, buf_height);
+    opaque->managed_frame = opaque_setup_frame(opaque, ff_format, buf_width, buf_height);
     if (!opaque->managed_frame) {
         ALOGE("overlay->opaque->frame allocation failed\n");
         goto fail;
     }
     overlay_fill(overlay, opaque->managed_frame, opaque->planes);
-
     return overlay;
 
 fail:

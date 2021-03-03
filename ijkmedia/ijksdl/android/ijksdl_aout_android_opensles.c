@@ -131,8 +131,7 @@ static int aout_thread_n(SDL_Aout *aout) {
 
     while (!opaque->abort_request) {
         SLAndroidSimpleBufferQueueState slState = {0};
-        SLresult slRet =
-            (*slBufferQueueItf)->GetState(slBufferQueueItf, &slState);
+        SLresult slRet = (*slBufferQueueItf)->GetState(slBufferQueueItf, &slState);
         if (slRet != SL_RESULT_SUCCESS) {
             ALOGE("%s: slBufferQueueItf->GetState() failed\n", __func__);
             SDL_UnlockMutex(opaque->wakeup_mutex);
@@ -200,9 +199,7 @@ static int aout_thread_n(SDL_Aout *aout) {
             opaque->need_flush = 0;
             (*slBufferQueueItf)->Clear(slBufferQueueItf);
         } else {
-            slRet =
-                (*slBufferQueueItf)
-                    ->Enqueue(slBufferQueueItf, next_buffer, bytes_per_buffer);
+            slRet = (*slBufferQueueItf)->Enqueue(slBufferQueueItf, next_buffer, bytes_per_buffer);
             if (slRet == SL_RESULT_SUCCESS) {
                 // do nothing
             } else if (slRet == SL_RESULT_BUFFER_INSUFFICIENT) {
@@ -215,7 +212,7 @@ static int aout_thread_n(SDL_Aout *aout) {
         }
 
         // TODO: 1 if callback return -1 or 0
-    }
+    } //while (!opaque->abort_request) {
 
     return 0;
 }
@@ -353,15 +350,13 @@ static int aout_open_audio(SDL_Aout *aout, const SDL_AudioSpec *desired,
             ALOGE("%s, invalid channel %d", __func__, desired->channels);
             goto fail;
     }
+
     format_pcm->endianness = SL_BYTEORDER_LITTLEENDIAN;
-
     SLDataSource audio_source = {&loc_bufq, format_pcm};
-
     // config audio sink
     SLDataLocator_OutputMix loc_outmix = {SL_DATALOCATOR_OUTPUTMIX,
                                           opaque->slOutputMixObject};
     SLDataSink audio_sink = {&loc_outmix, NULL};
-
     SLObjectItf slPlayerObject = NULL;
     const SLInterfaceID ids2[] = {SL_IID_ANDROIDSIMPLEBUFFERQUEUE,
                                   SL_IID_VOLUME, SL_IID_PLAY};
@@ -373,24 +368,15 @@ static int aout_open_audio(SDL_Aout *aout, const SDL_AudioSpec *desired,
     CHECK_OPENSL_ERROR(ret, "%s: slEngine->CreateAudioPlayer() failed",
                        __func__);
     opaque->slPlayerObject = slPlayerObject;
-
     ret = (*slPlayerObject)->Realize(slPlayerObject, SL_BOOLEAN_FALSE);
     CHECK_OPENSL_ERROR(ret, "%s: slPlayerObject->Realize() failed", __func__);
 
-    ret = (*slPlayerObject)
-              ->GetInterface(slPlayerObject, SL_IID_PLAY, &opaque->slPlayItf);
-    CHECK_OPENSL_ERROR(
-        ret, "%s: slPlayerObject->GetInterface(SL_IID_PLAY) failed", __func__);
+    ret = (*slPlayerObject)->GetInterface(slPlayerObject, SL_IID_PLAY, &opaque->slPlayItf);
+    CHECK_OPENSL_ERROR(ret, "%s: slPlayerObject->GetInterface(SL_IID_PLAY) failed", __func__);
+    ret = (*slPlayerObject)->GetInterface(slPlayerObject, SL_IID_VOLUME, &opaque->slVolumeItf);
+    CHECK_OPENSL_ERROR(ret, "%s: slPlayerObject->GetInterface(SL_IID_VOLUME) failed", __func__);
 
-    ret =
-        (*slPlayerObject)
-            ->GetInterface(slPlayerObject, SL_IID_VOLUME, &opaque->slVolumeItf);
-    CHECK_OPENSL_ERROR(ret,
-                       "%s: slPlayerObject->GetInterface(SL_IID_VOLUME) failed",
-                       __func__);
-
-    ret = (*slPlayerObject)
-              ->GetInterface(slPlayerObject, SL_IID_ANDROIDSIMPLEBUFFERQUEUE,
+    ret = (*slPlayerObject)->GetInterface(slPlayerObject, SL_IID_ANDROIDSIMPLEBUFFERQUEUE,
                              &opaque->slBufferQueueItf);
     CHECK_OPENSL_ERROR(
         ret,

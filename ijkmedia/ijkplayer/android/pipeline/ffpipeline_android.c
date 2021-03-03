@@ -72,10 +72,14 @@ static IJKFF_Pipenode *func_open_video_decoder(IJKFF_Pipeline *pipeline,
     IJKFF_Pipeline_Opaque *opaque = pipeline->opaque;
     IJKFF_Pipenode *node = NULL;
 
+    //如果有启用任何一种硬解选项，则创建mediacodec video decoder
     if (ffp->mediacodec_all_videos || ffp->mediacodec_avc ||
-        ffp->mediacodec_hevc || ffp->mediacodec_mpeg2)
+        ffp->mediacodec_hevc || ffp->mediacodec_mpeg2) {
         node = ffpipenode_create_video_decoder_from_android_mediacodec(
             ffp, pipeline, opaque->weak_vout);
+        }
+
+    //如果没有启用硬解，或者创建失败，则返回ffplay video decoder (软解码)
     if (!node) {
         node = ffpipenode_create_video_decoder_from_ffplay(ffp);
     }
@@ -91,9 +95,10 @@ static SDL_Aout *func_open_audio_output(IJKFF_Pipeline *pipeline,
     } else {
         aout = SDL_AoutAndroid_CreateForAudioTrack();
     }
-    if (aout)
+    if (aout) {
         SDL_AoutSetStereoVolume(aout, pipeline->opaque->left_volume,
                                 pipeline->opaque->right_volume);
+    }
     return aout;
 }
 

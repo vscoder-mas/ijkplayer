@@ -65,7 +65,6 @@ typedef struct SDL_Aout_Opaque {
     SDL_Thread _audio_tid;
 
     int audio_session_id;
-
     volatile float speed;
     volatile bool speed_changed;
 } SDL_Aout_Opaque;
@@ -73,6 +72,7 @@ typedef struct SDL_Aout_Opaque {
 static int aout_thread_n(JNIEnv *env, SDL_Aout *aout) {
     SDL_Aout_Opaque *opaque = aout->opaque;
     SDL_Android_AudioTrack *atrack = opaque->atrack;
+    //这就是ff_ffplay的sdl_audio_callback
     SDL_AudioCallback audio_cblk = opaque->spec.callback;
     void *userdata = opaque->spec.userdata;
     uint8_t *buffer = opaque->buffer;
@@ -84,8 +84,10 @@ static int aout_thread_n(JNIEnv *env, SDL_Aout *aout) {
     //音频输出线程设置为高优先级，保证音频流畅输出
     SDL_SetThreadPriority(SDL_THREAD_PRIORITY_HIGH);
 
-    if (!opaque->abort_request && !opaque->pause_on)
+    if (!opaque->abort_request && !opaque->pause_on) {
+        //开始播放
         SDL_Android_AudioTrack_play(env, atrack);
+    }
 
     while (!opaque->abort_request) {
         SDL_LockMutex(opaque->wakeup_mutex);
@@ -105,16 +107,19 @@ static int aout_thread_n(JNIEnv *env, SDL_Aout *aout) {
                 SDL_Android_AudioTrack_play(env, atrack);
             }
         }
+
         if (opaque->need_flush) {
             opaque->need_flush = 0;
             SDL_Android_AudioTrack_flush(env, atrack);
         }
+
         //如果有设置音量请求，设置音量
         if (opaque->need_set_volume) {
             opaque->need_set_volume = 0;
             SDL_Android_AudioTrack_set_volume(env, atrack, opaque->left_volume,
                                               opaque->right_volume);
         }
+
         //如果有变速请求，处理变速
         if (opaque->speed_changed) {
             opaque->speed_changed = 0;
@@ -134,8 +139,7 @@ static int aout_thread_n(JNIEnv *env, SDL_Aout *aout) {
             SDL_Android_AudioTrack_flush(env, atrack);
         } else {
             //AudioTrack.write写出
-            int written =
-                SDL_Android_AudioTrack_write(env, atrack, buffer, copy_size);
+            int written = SDL_Android_AudioTrack_write(env, atrack, buffer, copy_size);
             if (written != copy_size) {
                 ALOGW("AudioTrack: not all data copied %d/%d", (int)written,
                       (int)copy_size);
@@ -175,8 +179,7 @@ static int aout_open_audio_n(JNIEnv *env, SDL_Aout *aout,
         return -1;
     }
 
-    opaque->buffer_size =
-        SDL_Android_AudioTrack_get_min_buffer_size(opaque->atrack);
+    opaque->buffer_size = SDL_Android_AudioTrack_get_min_buffer_size(opaque->atrack);
     if (opaque->buffer_size <= 0) {
         ALOGE("aout_open_audio_n: failed to getMinBufferSize()");
         SDL_Android_AudioTrack_free(env, opaque->atrack);
@@ -326,7 +329,6 @@ SDL_Aout *SDL_AoutAndroid_CreateForAudioTrack() {
     aout->close_audio = aout_close_audio;
     aout->func_get_audio_session_id = aout_get_audio_session_id;
     aout->func_set_playback_rate = func_set_playback_rate;
-
     return aout;
 }
 

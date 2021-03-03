@@ -555,7 +555,6 @@ static int decoder_decode_frame(FFPlayer *ffp, Decoder *d, AVFrame *frame,
 
     for (;;) {
         AVPacket pkt;
-
         if (d->queue->serial == d->pkt_serial) {
             do {
                 if (d->queue->abort_request) return -1;
@@ -914,7 +913,7 @@ static void video_image_display2(FFPlayer *ffp) {
                 }
             }
         }
-    }
+    } //if (vp->bmp) {
 }
 
 // FFP_MERGE: compute_mod
@@ -1468,8 +1467,9 @@ static void alloc_picture(FFPlayer *ffp, int frame_format) {
     int sdl_format;
 #endif
 
+    //取当前要写入的帧，即peek_writabe的帧
+    //vp = frame_queue_peek_writable(&is->pictq)
     vp = &is->pictq.queue[is->pictq.windex];
-
     free_picture(vp);
 
 #ifdef FFP_MERGE
@@ -1477,8 +1477,7 @@ static void alloc_picture(FFPlayer *ffp, int frame_format) {
 #endif
 
     SDL_VoutSetOverlayFormat(ffp->vout, ffp->overlay_format);
-    vp->bmp =
-        SDL_Vout_CreateOverlay(vp->width, vp->height, frame_format, ffp->vout);
+    vp->bmp = SDL_Vout_CreateOverlay(vp->width, vp->height, frame_format, ffp->vout);
 #ifdef FFP_MERGE
     if (vp->format == AV_PIX_FMT_YUV420P)
         sdl_format = SDL_PIXELFORMAT_YV12;
@@ -1639,6 +1638,7 @@ static int queue_picture(FFPlayer *ffp, AVFrame *src_frame, double pts,
 #endif
 
     /* alloc or resize hardware picture buffer */
+    //正常情况下vp->bmp创建一次后可重复使用，不需要重新创建。只有格式变化后，才需要调用alloc_picture重新创建
     if (!vp->bmp || !vp->allocated || vp->width != src_frame->width ||
         vp->height != src_frame->height || vp->format != src_frame->format) {
         if (vp->width != src_frame->width || vp->height != src_frame->height)
@@ -1653,11 +1653,11 @@ static int queue_picture(FFPlayer *ffp, AVFrame *src_frame, double pts,
         /* the allocation must be done in the main thread to avoid
            locking problems. */
         alloc_picture(ffp, src_frame->format);
-
         if (is->videoq.abort_request) return -1;
     }
 
     /* if the frame is not skipped, then display it */
+    //创建overlay
     if (vp->bmp) {
         /* get a pointer on the bitmap */
         SDL_VoutLockYUVOverlay(vp->bmp);
@@ -1681,6 +1681,7 @@ static int queue_picture(FFPlayer *ffp, AVFrame *src_frame, double pts,
         /* update the bitmap content */
         SDL_VoutUnlockYUVOverlay(vp->bmp);
 
+        //和ffplay类似，保存frame信息。不同的是，不保存frame数据
         vp->pts = pts;
         vp->duration = duration;
         vp->pos = pos;
@@ -2416,8 +2417,7 @@ static int ffplay_video_thread(void *arg) {
             tb = av_buffersink_get_time_base(filt_out);
 #endif
             duration = (frame_rate.num && frame_rate.den
-                     ? av_q2d((AVRational){frame_rate.den, frame_rate.num})
-                     : 0);
+                     ? av_q2d((AVRational){frame_rate.den, frame_rate.num}) : 0);
             pts = (frame->pts == AV_NOPTS_VALUE) ? NAN : frame->pts * av_q2d(tb);
             ret = queue_picture(ffp, frame, pts, duration, frame->pkt_pos,
                                 is->viddec.pkt_serial);
@@ -2818,15 +2818,18 @@ static void sdl_audio_callback(void *opaque, Uint8 *stream, int len) {
                    len1);
         else {
             memset(stream, 0, len1);
-            if (!is->muted && is->audio_buf)
+            if (!is->muted && is->audio_buf) {
+                //empty func, do nothing
                 SDL_MixAudio(stream,
                              (uint8_t *)is->audio_buf + is->audio_buf_index,
                              len1, is->audio_volume);
+            }
         }
         len -= len1;
         stream += len1;
         is->audio_buf_index += len1;
-    }
+    } //while (len > 0)
+    
     is->audio_write_buf_size = is->audio_buf_size - is->audio_buf_index;
     /* Let's assume the audio driver that is used by SDL has two periods. */
     if (!isnan(is->audio_clock)) {

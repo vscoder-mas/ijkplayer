@@ -33,7 +33,7 @@
 #include "ijksdl_class.h"
 
 typedef struct SDL_VoutOverlay SDL_VoutOverlay;
-typedef struct IJK_EGL_Opaque  IJK_EGL_Opaque;
+typedef struct IJK_EGL_Opaque IJK_EGL_Opaque;
 
 #if 0
 enum {
@@ -42,17 +42,13 @@ enum {
 };
 #endif
 
-typedef struct IJK_EGL
-{
-    SDL_Class      *opaque_class;
+typedef struct IJK_EGL {
+    SDL_Class *opaque_class;
     IJK_EGL_Opaque *opaque;
-
     EGLNativeWindowType window;
-
     EGLDisplay display;
     EGLSurface surface;
     EGLContext context;
-
     EGLint width;
     EGLint height;
 
@@ -61,11 +57,12 @@ typedef struct IJK_EGL
 #endif
 } IJK_EGL;
 
-IJK_EGL    *IJK_EGL_create();
-void        IJK_EGL_free(IJK_EGL *egl);
-void        IJK_EGL_freep(IJK_EGL **egl);
+IJK_EGL *IJK_EGL_create();
+void IJK_EGL_free(IJK_EGL *egl);
+void IJK_EGL_freep(IJK_EGL **egl);
 
-EGLBoolean  IJK_EGL_display(IJK_EGL* egl, EGLNativeWindowType window, SDL_VoutOverlay *overlay);
-void        IJK_EGL_terminate(IJK_EGL* egl);
+EGLBoolean IJK_EGL_display(IJK_EGL *egl, EGLNativeWindowType window,
+                           SDL_VoutOverlay *overlay);
+void IJK_EGL_terminate(IJK_EGL *egl);
 
 #endif

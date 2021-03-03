@@ -63,8 +63,9 @@ int SDL_VoutSetOverlayFormat(SDL_Vout *vout, Uint32 overlay_format) {
 
 SDL_VoutOverlay *SDL_Vout_CreateOverlay(int width, int height, int frame_format,
                                         SDL_Vout *vout) {
-    if (vout && vout->create_overlay)
+    if (vout && vout->create_overlay) {
         return vout->create_overlay(width, height, frame_format, vout);
+    }
 
     return NULL;
 }

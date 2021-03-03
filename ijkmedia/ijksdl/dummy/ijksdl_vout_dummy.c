@@ -35,10 +35,8 @@ struct SDL_Vout_Opaque {
     char dummy;
 };
 
-static void func_free_l(SDL_Vout *vout)
-{
-    if (!vout)
-        return;
+static void func_free_l(SDL_Vout *vout) {
+    if (!vout) return;
 
     SDL_Vout_Opaque *opaque = vout->opaque;
     if (opaque) {
@@ -47,24 +45,20 @@ static void func_free_l(SDL_Vout *vout)
     SDL_Vout_FreeInternal(vout);
 }
 
-static int func_display_overlay_l(SDL_Vout *vout, SDL_VoutOverlay *overlay)
-{
+static int func_display_overlay_l(SDL_Vout *vout, SDL_VoutOverlay *overlay) {
     return 0;
 }
 
-static int func_display_overlay(SDL_Vout *vout, SDL_VoutOverlay *overlay)
-{
+static int func_display_overlay(SDL_Vout *vout, SDL_VoutOverlay *overlay) {
     SDL_LockMutex(vout->mutex);
     int retval = func_display_overlay_l(vout, overlay);
     SDL_UnlockMutex(vout->mutex);
     return retval;
 }
 
-SDL_Vout *SDL_VoutDummy_Create()
-{
+SDL_Vout *SDL_VoutDummy_Create() {
     SDL_Vout *vout = SDL_Vout_CreateInternal(sizeof(SDL_Vout_Opaque));
-    if (!vout)
-        return NULL;
+    if (!vout) return NULL;
 
     // SDL_Vout_Opaque *opaque = vout->opaque;
 

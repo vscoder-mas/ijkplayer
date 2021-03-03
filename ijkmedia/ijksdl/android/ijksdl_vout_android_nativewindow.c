@@ -436,9 +436,7 @@ int SDL_VoutAndroid_releaseBufferProxyP_l(SDL_Vout *vout,
                                           SDL_AMediaCodecBufferProxy **proxy,
                                           bool render) {
     int ret = 0;
-
     if (!proxy) return 0;
-
     ret = SDL_VoutAndroid_releaseBufferProxy_l(vout, *proxy, render);
     *proxy = NULL;
     return ret;
