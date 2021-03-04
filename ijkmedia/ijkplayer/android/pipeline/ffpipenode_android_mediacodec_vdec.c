@@ -66,7 +66,6 @@ typedef struct IJKFF_Pipenode_Opaque {
     IJKFF_Pipeline *pipeline;
     Decoder *decoder;
     SDL_Vout *weak_vout;
-
     ijkmp_mediacodecinfo_context mcc;
 
     jobject jsurface;
@@ -252,6 +251,8 @@ static int recreate_format_l(JNIEnv *env, IJKFF_Pipenode *node) {
                     goto fail;
                 }
             }
+
+            //videoFormat.setByteBuffer("csd-0", ByteBuffer.wrap(csd_0));
             SDL_AMediaFormat_setBuffer(opaque->input_aformat, "csd-0",
                                        convert_buffer, sps_pps_size);
             for (int i = 0; i < sps_pps_size; i += 4) {
@@ -280,7 +281,7 @@ static int recreate_format_l(JNIEnv *env, IJKFF_Pipenode *node) {
             // opaque->codecpar->extradata, opaque->codecpar->extradata_size);
             ALOGE("csd-0: naked\n");
         }
-    } else {
+    } else { //if (opaque->codecpar->extradata && opaque->codecpar->extradata_size > 0) {
         ALOGE("no buffer(%d)\n", opaque->codecpar->extradata_size);
     }
 
@@ -2101,6 +2102,7 @@ IJKFF_Pipenode *ffpipenode_create_video_decoder_from_android_mediacodec(
                                           opaque->decoder->avctx);
     if (ret) goto fail;
 
+    //2. 硬解选项检查
     switch (opaque->codecpar->codec_id) {
         case AV_CODEC_ID_H264:
             if (!ffp->mediacodec_avc && !ffp->mediacodec_all_videos) {
@@ -2229,6 +2231,7 @@ IJKFF_Pipenode *ffpipenode_create_video_decoder_from_android_mediacodec(
         goto fail;
     }
 
+    //3. 创建MediaFormat
     ret = recreate_format_l(env, node);
     if (ret) {
         ALOGE("amc: recreate_format_l failed\n");

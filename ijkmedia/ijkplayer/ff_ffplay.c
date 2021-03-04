@@ -4997,8 +4997,7 @@ int ffp_get_video_rotate_degrees(FFPlayer *ffp) {
     VideoState *is = ffp->is;
     if (!is) return 0;
 
-    int theta =
-        abs((int)((int64_t)round(fabs(get_rotation(is->video_st))) % 360));
+    int theta = abs((int)((int64_t)round(fabs(get_rotation(is->video_st))) % 360));
     switch (theta) {
         case 0:
         case 90:
