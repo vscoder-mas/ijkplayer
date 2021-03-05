@@ -343,6 +343,7 @@ J4AC_tv_danmaku_ijk_media_player_IjkMediaPlayer__onSelectCodec__withCString__asC
         goto fail;
     }
 
+    //out_buf指向mcc->codec_name, ijkmp_mediacodecinfo_context *mcc
     strlcpy(out_buf, c_str, out_len);
     ret_value = out_buf;
 

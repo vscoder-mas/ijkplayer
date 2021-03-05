@@ -31,6 +31,7 @@
 #include "j4au/class/java/nio/ByteBuffer.util.h"
 
 typedef struct SDL_AMediaFormat_Opaque {
+    //java层MediaFormat引用
     jobject android_media_format;
     jobject android_byte_buffer;
 } SDL_AMediaFormat_Opaque;

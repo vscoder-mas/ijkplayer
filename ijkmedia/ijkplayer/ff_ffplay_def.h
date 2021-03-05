@@ -229,6 +229,7 @@ typedef struct Frame {
 #ifdef FFP_MERGE
     SDL_Texture *bmp;
 #else
+    //界面显示的重要中间变量 bmp->SDL_VoutOverlay_Opaque
     SDL_VoutOverlay *bmp;
 #endif
     int allocated;
@@ -260,11 +261,13 @@ enum {
 
 typedef struct Decoder {
     AVPacket pkt;
+    //表示要发送的pkt
     AVPacket pkt_temp;
     PacketQueue *queue;
     AVCodecContext *avctx;
     int pkt_serial;
     int finished;
+    //packet_pending表示pkt_temp中有未发送完的数据
     int packet_pending;
     int bfsc_ret;
     uint8_t *bfsc_data;
@@ -669,6 +672,7 @@ typedef struct FFPlayer {
 
     int64_t playable_duration_ms;
 
+    //packet 是否有缓存标志位
     int packet_buffering;
     int pictq_size;
     int max_fps;

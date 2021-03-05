@@ -43,7 +43,7 @@ typedef struct SDL_VoutOverlay_Opaque {
 
     SDL_Vout *vout;
     SDL_AMediaCodec *acodec;
-
+    //用于保存mediacodec解码后的buffer_index和bufferinfo
     SDL_AMediaCodecBufferProxy *buffer_proxy;
 
     Uint16 pitches[AV_NUM_DATA_POINTERS];
@@ -104,9 +104,7 @@ inline static bool check_object(SDL_VoutOverlay *object,
 
 static int func_fill_frame(SDL_VoutOverlay *overlay, const AVFrame *frame) {
     assert(frame->format == IJK_AV_PIX_FMT__ANDROID_MEDIACODEC);
-
     SDL_VoutOverlay_Opaque *opaque = overlay->opaque;
-
     if (!check_object(overlay, __func__)) return -1;
 
     if (opaque->buffer_proxy)
@@ -116,6 +114,7 @@ static int func_fill_frame(SDL_VoutOverlay *overlay, const AVFrame *frame) {
 
     opaque->acodec = SDL_VoutAndroid_peekAMediaCodec(opaque->vout);
     // TODO: ref-count buffer_proxy?
+    //frame->opaque 保存 SDL_AMediaCodecBufferProxy bufferinfo
     opaque->buffer_proxy = (SDL_AMediaCodecBufferProxy *)frame->opaque;
 
     overlay->opaque_class = &g_vout_overlay_amediacodec_class;

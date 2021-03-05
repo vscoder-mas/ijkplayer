@@ -200,8 +200,7 @@ public class IjkMediaCodecInfo {
             return;
 
         try {
-            CodecCapabilities caps = mCodecInfo
-                    .getCapabilitiesForType(mimeType);
+            CodecCapabilities caps = mCodecInfo.getCapabilitiesForType(mimeType);
             int maxProfile = 0;
             int maxLevel = 0;
             if (caps != null) {
@@ -216,9 +215,7 @@ public class IjkMediaCodecInfo {
                 }
             }
 
-            Log.i(TAG,
-                    String.format(Locale.US, "%s",
-                            getProfileLevelName(maxProfile, maxLevel)));
+            Log.i(TAG, String.format(Locale.US, "%s", getProfileLevelName(maxProfile, maxLevel)));
         } catch (Throwable e) {
             Log.i(TAG, "profile-level: exception");
         }

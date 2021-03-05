@@ -353,6 +353,7 @@ static int reconfigure_codec_l(JNIEnv *env, IJKFF_Pipenode *node,
         assert(opaque->weak_vout);
     }
 
+    //MediaCodec.setSurface
     amc_ret = SDL_AMediaCodec_configure_surface(
         env, opaque->acodec, opaque->input_aformat, opaque->jsurface, NULL, 0);
     if (amc_ret != SDL_AMEDIA_OK) {
@@ -361,6 +362,7 @@ static int reconfigure_codec_l(JNIEnv *env, IJKFF_Pipenode *node,
         goto fail;
     }
 
+    //MediaCodec.start
     amc_ret = SDL_AMediaCodec_start(opaque->acodec);
     if (amc_ret != SDL_AMEDIA_OK) {
         ALOGE("%s:SDL_AMediaCodec_start: failed\n", __func__);
@@ -764,6 +766,8 @@ static int feed_input_buffer(JNIEnv *env, IJKFF_Pipenode *node, int64_t timeUs,
         goto fail;
     }
 
+    //1. 读Packet，及不连续Packet的处理
+    //d->packet_pending=1，表示有未发送完的AVPacket，不取新AVPacket
     if (!d->packet_pending || d->queue->serial != d->pkt_serial) {
 #if AMC_USE_AVBITSTREAM_FILTER
 #else
@@ -777,6 +781,8 @@ static int feed_input_buffer(JNIEnv *env, IJKFF_Pipenode *node, int64_t timeUs,
                 ret = -1;
                 goto fail;
             }
+
+            //如果packet是flush_packet
             if (ffp_is_flush_packet(&pkt) || opaque->acodec_flush_request) {
                 // request flush before lock, or never get mutex
                 opaque->acodec_flush_request = true;
@@ -802,6 +808,7 @@ static int feed_input_buffer(JNIEnv *env, IJKFF_Pipenode *node, int64_t timeUs,
             }
         } while (ffp_is_flush_packet(&pkt) ||
                  d->queue->serial != d->pkt_serial);
+
         av_packet_split_side_data(&pkt);
         av_packet_unref(&d->pkt);
         d->pkt_temp = d->pkt = pkt;
@@ -864,7 +871,8 @@ static int feed_input_buffer(JNIEnv *env, IJKFF_Pipenode *node, int64_t timeUs,
                 av_frame_unref(frame);
                 avcodec_free_context(&new_avctx);
             }
-        }
+        }  // if (opaque->ffp->mediacodec_handle_resolution_change &&
+           // opaque->codecpar->codec_id == AV_CODEC_ID_H264)
 
 #if AMC_USE_AVBITSTREAM_FILTER
         // d->pkt_temp->data could be allocated by av_bitstream_filter_filter
@@ -937,9 +945,11 @@ static int feed_input_buffer(JNIEnv *env, IJKFF_Pipenode *node, int64_t timeUs,
 #endif
     }
 
+    //2. 喂数据 d->packet_pending=1, 继续消费d->pkt_temp.data
     if (d->pkt_temp.data) {
         // reconfigure surface if surface changed
         // NULL surface cause no display
+        //如果需要重新配置MediaCodec，则重新创建一个
         if (ffpipeline_is_surface_need_reconfigure_l(pipeline)) {
             jobject new_surface = NULL;
 
@@ -998,7 +1008,7 @@ static int feed_input_buffer(JNIEnv *env, IJKFF_Pipenode *node, int64_t timeUs,
                     goto fail;
                 }
             }
-        }
+        } //if (ffpipeline_is_surface_need_reconfigure_l(pipeline)) {
 
 #if 0
         // no need to decode without surface
@@ -1009,8 +1019,8 @@ static int feed_input_buffer(JNIEnv *env, IJKFF_Pipenode *node, int64_t timeUs,
 #endif
 
         queue_flags = 0;
-        input_buffer_index =
-            SDL_AMediaCodec_dequeueInputBuffer(opaque->acodec, timeUs);
+        //int inputBufferIndex = videoCodec.dequeueInputBuffer(10);
+        input_buffer_index = SDL_AMediaCodec_dequeueInputBuffer(opaque->acodec, timeUs);
         if (input_buffer_index < 0) {
             if (SDL_AMediaCodec_isInputBuffersValid(opaque->acodec)) {
                 // timeout
@@ -1022,8 +1032,12 @@ static int feed_input_buffer(JNIEnv *env, IJKFF_Pipenode *node, int64_t timeUs,
                 copy_size = d->pkt_temp.size;
             }
         } else {
+            /*
+                ByteBuffer byteBuffer = videoCodec.getInputBuffers()[inputBufferIndex];
+                byteBuffer.clear();
+                byteBuffer.put(data);
+            */
             SDL_AMediaCodecFake_flushFakeFrames(opaque->acodec);
-
             copy_size = SDL_AMediaCodec_writeInputData(
                 opaque->acodec, input_buffer_index, d->pkt_temp.data,
                 d->pkt_temp.size);
@@ -1044,6 +1058,7 @@ static int feed_input_buffer(JNIEnv *env, IJKFF_Pipenode *node, int64_t timeUs,
             time_stamp = 0;
         }
         // ALOGE("queueInputBuffer, %lld\n", time_stamp);
+        // videoCodec.queueInputBuffer(inputBufferIndex, 0, dataSize, 0, 0);
         amc_ret = SDL_AMediaCodec_queueInputBuffer(
             opaque->acodec, input_buffer_index, 0, copy_size, time_stamp,
             queue_flags);
@@ -1052,13 +1067,21 @@ static int feed_input_buffer(JNIEnv *env, IJKFF_Pipenode *node, int64_t timeUs,
             ret = -1;
             goto fail;
         }
+
         // ALOGE("%s: queue %d/%d", __func__, (int)copy_size,
         // (int)input_buffer_size);
         opaque->input_packet_count++;
         if (enqueue_count) ++*enqueue_count;
-    }
+    } //if (d->pkt_temp.data) {
 
+    /*
+        3. pkt_temp更新
+        每次发送后，根据已发送大小copy_size更新pkt_temp，直到pkt_temp.size小于0，
+        置packet_pending为0。在读Packet前会先判断packet_pending是否为1，如果为1，
+        则不拉取新的Packet，而是先消耗pkt_temp。这样就达到循环发送Packet的目的了
+    */
     if (copy_size < 0) {
+        //无需分包
         d->packet_pending = 0;
     } else {
         d->pkt_temp.dts = d->pkt_temp.pts = AV_NOPTS_VALUE;
@@ -1096,8 +1119,8 @@ static int enqueue_thread_func(void *arg) {
     }
 
     while (!q->abort_request && !opaque->abort) {
-        ret =
-            feed_input_buffer(env, node, AMC_INPUT_TIMEOUT_US, &dequeue_count);
+        //主要调用MediaCodec.queueInputBuffer给MediaCodec喂原始数据
+        ret = feed_input_buffer(env, node, AMC_INPUT_TIMEOUT_US, &dequeue_count);
         if (ret != 0) {
             goto fail;
         }
@@ -1150,7 +1173,9 @@ static int drain_output_buffer_l(JNIEnv *env, IJKFF_Pipenode *node,
     SDL_AMediaCodecBufferInfo bufferInfo;
     ssize_t output_buffer_index = 0;
 
-    if (dequeue_count) *dequeue_count = 0;
+    if (dequeue_count) {
+        *dequeue_count = 0;
+    }
 
     if (JNI_OK != SDL_JNI_SetupThreadEnv(&env)) {
         ALOGE("%s:create: SetupThreadEnv failed\n", __func__);
@@ -1255,6 +1280,8 @@ static int drain_output_buffer_l(JNIEnv *env, IJKFF_Pipenode *node,
 #endif
 
         if (opaque->n_buf_out) {
+            //如果开启了缓冲区，则对缓冲区内的帧进行pts排序后输出。看代码，
+            //目前只有codec是OMX.TI.DUCATI1.才启用。也就是默认MediaCodec的输出都是pts排序好的
             AMC_Buf_Out *buf_out;
 
             if (opaque->off_buf_out < opaque->n_buf_out) {
@@ -1323,11 +1350,14 @@ static int drain_output_buffer_l(JNIEnv *env, IJKFF_Pipenode *node,
                 }
             }
         } else {
+            //如果是output_buffer_index >= 0，则调用amc_fill_frame把bufferinfo填充到AVFrame中
+            //amc_fill_frame主要是填充Frame的宽、高、pts等信息，把bufferinfo填入到Opaque中;并没有填充真正的图像数据
+            //Frame显示的时候再利用这些信息通过MediaCodec的releasseOutputBuffer进行显示
             ret = amc_fill_frame(node, frame, got_frame, output_buffer_index,
                                  SDL_AMediaCodec_getSerial(opaque->acodec),
                                  &bufferInfo);
         }
-    }
+    } //} else if (output_buffer_index >= 0) {
 
 done:
     if (opaque->decoder->queue->abort_request)
@@ -1628,7 +1658,7 @@ static int drain_output_buffer2(JNIEnv *env, IJKFF_Pipenode *node,
                     (SDL_AMediaCodecBufferProxy **)&frame->opaque, false);
         }
         av_frame_unref(frame);
-    }
+    } //if (got_frame) {
 
     return ret;
 }
@@ -1711,6 +1741,7 @@ static int func_run_sync(IJKFF_Pipenode *node) {
     frame = av_frame_alloc();
     if (!frame) goto fail;
 
+    //A. 创建enqueue_thread，喂原始数据
     opaque->enqueue_thread =
         SDL_CreateThreadEx(&opaque->_enqueue_thread, enqueue_thread_func, node,
                            "amediacodec_input_thread");
@@ -1720,11 +1751,13 @@ static int func_run_sync(IJKFF_Pipenode *node) {
         goto fail;
     }
 
+    //B. 循环拉取解码数据
     while (!q->abort_request) {
         int64_t timeUs = opaque->acodec_first_dequeue_output_request
                              ? 0
                              : AMC_OUTPUT_TIMEOUT_US;
         got_frame = 0;
+        //主要调用MediaCodec.dequeueOutputBuffer从MediaCodec拉解码数据
         ret = drain_output_buffer(env, node, timeUs, &dequeue_count, frame,
                                   &got_frame);
         if (opaque->acodec_first_dequeue_output_request) {
@@ -1746,8 +1779,7 @@ static int func_run_sync(IJKFF_Pipenode *node) {
                 (frame_rate.num && frame_rate.den
                      ? av_q2d((AVRational){frame_rate.den, frame_rate.num})
                      : 0);
-            pts =
-                (frame->pts == AV_NOPTS_VALUE) ? NAN : frame->pts * av_q2d(tb);
+            pts = (frame->pts == AV_NOPTS_VALUE) ? NAN : frame->pts * av_q2d(tb);
             if (ffp->framedrop > 0 ||
                 (ffp->framedrop &&
                  ffp_get_master_sync_type(is) != AV_SYNC_VIDEO_MASTER)) {
@@ -1781,6 +1813,7 @@ static int func_run_sync(IJKFF_Pipenode *node) {
                     }
                 }
             }
+            //将解码后的AVFrame送入FrameQueue
             ret = ffp_queue_picture(ffp, frame, pts, duration,
                                     av_frame_get_pkt_pos(frame),
                                     is->viddec.pkt_serial);
@@ -1791,8 +1824,8 @@ static int func_run_sync(IJKFF_Pipenode *node) {
                         (SDL_AMediaCodecBufferProxy **)&frame->opaque, false);
             }
             av_frame_unref(frame);
-        }
-    }
+        } //if (got_frame) {
+    } //while (!q->abort_request) {
 
 fail:
     av_frame_free(&frame);
@@ -2087,6 +2120,7 @@ IJKFF_Pipenode *ffpipenode_create_video_decoder_from_android_mediacodec(
     if (ffp->mediacodec_sync) {
         node->func_run_sync = func_run_sync_loop;
     } else {
+        //默认使用的是func_run_sync
         node->func_run_sync = func_run_sync;
     }
     node->func_flush = func_flush;
@@ -2231,7 +2265,7 @@ IJKFF_Pipenode *ffpipenode_create_video_decoder_from_android_mediacodec(
         goto fail;
     }
 
-    //3. 创建MediaFormat
+    //3. 创建MediaFormat 主要设置mime type, width, height和csd-0
     ret = recreate_format_l(env, node);
     if (ret) {
         ALOGE("amc: recreate_format_l failed\n");
@@ -2245,6 +2279,7 @@ IJKFF_Pipenode *ffpipenode_create_video_decoder_from_android_mediacodec(
     }
 
     jsurface = ffpipeline_get_surface_as_global_ref(env, pipeline);
+    //配置codec(创建MediaCodec)
     ret = reconfigure_codec_l(env, node, jsurface);
     J4A_DeleteGlobalRef__p(env, &jsurface);
     if (ret != 0) goto fail;

@@ -167,6 +167,7 @@ static int func_display_overlay_l(SDL_Vout *vout, SDL_VoutOverlay *overlay) {
     }
 
     switch (overlay->format) {
+        //MediaCodec走这个逻辑, 直接return
         case SDL_FCC__AMC: {
             // only ANativeWindow support
             IJK_EGL_terminate(opaque->egl);
@@ -289,7 +290,6 @@ static void SDL_VoutAndroid_setAMediaCodec_l(SDL_Vout *vout,
     if (opaque->acodec == acodec) return;
 
     SDL_VoutAndroid_invalidateAllBuffers_l(vout);
-
     SDL_AMediaCodec_decreaseReferenceP(&opaque->acodec);
     opaque->acodec = acodec;
     if (opaque->acodec) SDL_AMediaCodec_increaseReference(opaque->acodec);
@@ -388,6 +388,7 @@ static int SDL_VoutAndroid_releaseBufferProxy_l(
         return 0;
     }
 
+    //videoCodec.releaseOutputBuffer(outputBufferIndex, true);
     sdl_amedia_status_t amc_ret = SDL_AMediaCodec_releaseOutputBuffer(
         opaque->acodec, proxy->buffer_index, render);
     if (amc_ret != SDL_AMEDIA_OK) {

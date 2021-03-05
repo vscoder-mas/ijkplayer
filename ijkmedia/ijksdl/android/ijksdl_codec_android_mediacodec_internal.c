@@ -20,6 +20,7 @@
  */
 
 #include "ijksdl_codec_android_mediacodec_internal.h"
+
 #include "ijksdl/ijksdl_log.h"
 #include "ijksdl/ijksdl_mutex.h"
 #include "ijksdl/ijksdl_timer.h"
@@ -28,8 +29,8 @@
 #define FAK_TRACE(...)
 //#define FAK_TRACE ALOGE
 
-sdl_amedia_status_t SDL_AMediaCodec_FakeFifo_init(SDL_AMediaCodec_FakeFifo *fifo)
-{
+sdl_amedia_status_t SDL_AMediaCodec_FakeFifo_init(
+    SDL_AMediaCodec_FakeFifo *fifo) {
     memset(fifo, 0, sizeof(SDL_AMediaCodec_FakeFifo));
 
     fifo->mutex = SDL_CreateMutex();
@@ -39,8 +40,7 @@ sdl_amedia_status_t SDL_AMediaCodec_FakeFifo_init(SDL_AMediaCodec_FakeFifo *fifo
     return SDL_AMEDIA_OK;
 }
 
-void SDL_AMediaCodec_FakeFifo_abort(SDL_AMediaCodec_FakeFifo *fifo)
-{
+void SDL_AMediaCodec_FakeFifo_abort(SDL_AMediaCodec_FakeFifo *fifo) {
     SDL_LockMutex(fifo->mutex);
     fifo->should_abort = 1;
     SDL_CondSignal(fifo->wakeup_enqueue_cond);
@@ -48,13 +48,10 @@ void SDL_AMediaCodec_FakeFifo_abort(SDL_AMediaCodec_FakeFifo *fifo)
     SDL_UnlockMutex(fifo->mutex);
 }
 
-void SDL_AMediaCodec_FakeFifo_destroy(SDL_AMediaCodec_FakeFifo *fifo)
-{
-    if (!fifo)
-        return;
+void SDL_AMediaCodec_FakeFifo_destroy(SDL_AMediaCodec_FakeFifo *fifo) {
+    if (!fifo) return;
 
-    if (fifo->mutex)
-        SDL_AMediaCodec_FakeFifo_abort(fifo);
+    if (fifo->mutex) SDL_AMediaCodec_FakeFifo_abort(fifo);
 
     SDL_DestroyMutexP(&fifo->mutex);
     SDL_DestroyCondP(&fifo->wakeup_enqueue_cond);
@@ -63,16 +60,16 @@ void SDL_AMediaCodec_FakeFifo_destroy(SDL_AMediaCodec_FakeFifo *fifo)
     memset(fifo, 0, sizeof(SDL_AMediaCodec_FakeFifo));
 }
 
-ssize_t SDL_AMediaCodec_FakeFifo_dequeueInputBuffer(SDL_AMediaCodec_FakeFifo* fifo, int64_t timeoutUs)
-{
+ssize_t SDL_AMediaCodec_FakeFifo_dequeueInputBuffer(
+    SDL_AMediaCodec_FakeFifo *fifo, int64_t timeoutUs) {
     int ret_index = -1;
-    if (fifo->should_abort)
-        return SDL_AMEDIA_ERROR_UNKNOWN;
+    if (fifo->should_abort) return SDL_AMEDIA_ERROR_UNKNOWN;
 
     SDL_LockMutex(fifo->mutex);
     if (!fifo->should_abort) {
         if (fifo->size >= FAKE_BUFFER_QUEUE_SIZE) {
-            SDL_CondWaitTimeout(fifo->wakeup_enqueue_cond, fifo->mutex, timeoutUs / 1000);
+            SDL_CondWaitTimeout(fifo->wakeup_enqueue_cond, fifo->mutex,
+                                timeoutUs / 1000);
         }
 
         if (fifo->size < FAKE_BUFFER_QUEUE_SIZE) {
@@ -81,16 +78,15 @@ ssize_t SDL_AMediaCodec_FakeFifo_dequeueInputBuffer(SDL_AMediaCodec_FakeFifo* fi
     }
     SDL_UnlockMutex(fifo->mutex);
 
-    if (fifo->should_abort)
-        return -1;
+    if (fifo->should_abort) return -1;
 
     return ret_index;
 }
 
-sdl_amedia_status_t SDL_AMediaCodec_FakeFifo_queueInputBuffer(SDL_AMediaCodec_FakeFifo *fifo, size_t idx, off_t offset, size_t size, uint64_t time, uint32_t flags)
-{
-    if (fifo->should_abort)
-        return SDL_AMEDIA_ERROR_UNKNOWN;
+sdl_amedia_status_t SDL_AMediaCodec_FakeFifo_queueInputBuffer(
+    SDL_AMediaCodec_FakeFifo *fifo, size_t idx, off_t offset, size_t size,
+    uint64_t time, uint32_t flags) {
+    if (fifo->should_abort) return SDL_AMEDIA_ERROR_UNKNOWN;
 
     SDL_LockMutex(fifo->mutex);
     if (fifo->size >= FAKE_BUFFER_QUEUE_SIZE) {
@@ -100,10 +96,10 @@ sdl_amedia_status_t SDL_AMediaCodec_FakeFifo_queueInputBuffer(SDL_AMediaCodec_Fa
 
     SDL_AMediaCodec_FakeFrame *fake = &fifo->fakes[fifo->end];
     fake->info.offset = offset;
-    fake->info.size   = size;
+    fake->info.size = size;
     fake->info.presentationTimeUs = time;
-    fake->info.flags  = flags;
-    fake->index       = fifo->end;
+    fake->info.flags = flags;
+    fake->index = fifo->end;
 
     FAK_TRACE("%s, %d, %lld", __func__, fifo->end, time);
 
@@ -115,25 +111,26 @@ sdl_amedia_status_t SDL_AMediaCodec_FakeFifo_queueInputBuffer(SDL_AMediaCodec_Fa
     return SDL_AMEDIA_OK;
 }
 
-ssize_t SDL_AMediaCodec_FakeFifo_dequeueOutputBuffer(SDL_AMediaCodec_FakeFifo *fifo, SDL_AMediaCodecBufferInfo *info, int64_t timeoutUs)
-{
-    if (fifo->should_abort)
-        return -1;
+ssize_t SDL_AMediaCodec_FakeFifo_dequeueOutputBuffer(
+    SDL_AMediaCodec_FakeFifo *fifo, SDL_AMediaCodecBufferInfo *info,
+    int64_t timeoutUs) {
+    if (fifo->should_abort) return -1;
 
-    int64_t  timeoutMs  = (timeoutUs + 999) / 1000;    
-    ssize_t  dequeue_ret = -1;
+    int64_t timeoutMs = (timeoutUs + 999) / 1000;
+    ssize_t dequeue_ret = -1;
     uint64_t wait_start = SDL_GetTickHR();
-    int64_t  to_wait    = timeoutMs;
+    int64_t to_wait = timeoutMs;
 
     SDL_LockMutex(fifo->mutex);
     while (!fifo->should_abort) {
         if (fifo->size > 0) {
             SDL_AMediaCodec_FakeFrame *fake = &fifo->fakes[fifo->begin];
-            *info        = fake->info;
+            *info = fake->info;
             info->flags |= AMEDIACODEC__BUFFER_FLAG_FAKE_FRAME;
-            dequeue_ret  = fake->index;
+            dequeue_ret = fake->index;
 
-            FAK_TRACE("%s, [%d]%lld", __func__, fifo->begin, info->presentationTimeUs);
+            FAK_TRACE("%s, [%d]%lld", __func__, fifo->begin,
+                      info->presentationTimeUs);
 
             fifo->begin = (fifo->begin + 1) % FAKE_BUFFER_QUEUE_SIZE;
             fifo->size--;
@@ -162,25 +159,21 @@ ssize_t SDL_AMediaCodec_FakeFifo_dequeueOutputBuffer(SDL_AMediaCodec_FakeFifo *f
     }
     SDL_UnlockMutex(fifo->mutex);
 
-    if (fifo->should_abort)
-        return -1;
+    if (fifo->should_abort) return -1;
 
     return dequeue_ret;
 }
 
-void SDL_AMediaCodec_FakeFifo_flush(SDL_AMediaCodec_FakeFifo *fifo)
-{
-    if (fifo->should_abort)
-        return;
+void SDL_AMediaCodec_FakeFifo_flush(SDL_AMediaCodec_FakeFifo *fifo) {
+    if (fifo->should_abort) return;
 
     SDL_LockMutex(fifo->mutex);
     fifo->begin = 0;
-    fifo->end   = 0;
-    fifo->size  = 0;
+    fifo->end = 0;
+    fifo->size = 0;
     SDL_UnlockMutex(fifo->mutex);
 }
 
-int SDL_AMediaCodec_FakeFifo_size(SDL_AMediaCodec_FakeFifo *fifo)
-{
+int SDL_AMediaCodec_FakeFifo_size(SDL_AMediaCodec_FakeFifo *fifo) {
     return fifo->size;
 }

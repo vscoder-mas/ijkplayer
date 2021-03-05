@@ -324,7 +324,9 @@ static int packet_queue_get_or_buffering(FFPlayer *ffp, PacketQueue *q,
                                          AVPacket *pkt, int *serial,
                                          int *finished) {
     assert(finished);
-    if (!ffp->packet_buffering) return packet_queue_get(q, pkt, 1, serial);
+    if (!ffp->packet_buffering) {
+        return packet_queue_get(q, pkt, 1, serial);
+    }
 
     while (1) {
         int new_packet = packet_queue_get(q, pkt, 0, serial);
@@ -856,6 +858,7 @@ static void video_image_display2(FFPlayer *ffp) {
     vp = frame_queue_peek_last(&is->pictq);
 
     if (vp->bmp) {
+        //字幕流处理
         if (is->subtitle_st) {
             if (frame_queue_nb_remaining(&is->subpq) > 0) {
                 sp = frame_queue_peek(&is->subpq);
@@ -1410,7 +1413,7 @@ static void video_refresh(FFPlayer *opaque, double *remaining_time) {
         if (!ffp->display_disable && is->force_refresh &&
             is->show_mode == SHOW_MODE_VIDEO && is->pictq.rindex_shown)
             video_display2(ffp);
-    }
+    } //if (is->video_st) {
 
     is->force_refresh = 0;
     if (ffp->show_status) {
@@ -3145,15 +3148,17 @@ static int stream_component_open(FFPlayer *ffp, int stream_index) {
                     if (!ffp->node_vdec) goto fail;
                 }
             } else {
-                decoder_init(&is->viddec, avctx, &is->videoq,
-                             is->continue_read_thread);
-                ffp->node_vdec =
-                    ffpipeline_open_video_decoder(ffp->pipeline, ffp);
+                //同步创建解码器
+                decoder_init(&is->viddec, avctx, &is->videoq, is->continue_read_thread);
+                ffp->node_vdec = ffpipeline_open_video_decoder(ffp->pipeline, ffp);
                 if (!ffp->node_vdec) goto fail;
             }
+
+            //解码调用过程:stream_component_open -> decoder_start -> video_thread -> fun_run_sync
             if ((ret = decoder_start(&is->viddec, video_thread, ffp,
-                                     "ff_video_dec")) < 0)
+                                     "ff_video_dec")) < 0) {
                 goto out;
+            }
 
             is->queue_attachments_req = 1;
 
@@ -4738,6 +4743,7 @@ Frame *ffp_frame_queue_peek_writable(FrameQueue *f) {
 
 void ffp_frame_queue_push(FrameQueue *f) { return frame_queue_push(f); }
 
+//将解码后的AVFrame送入FrameQueue
 int ffp_queue_picture(FFPlayer *ffp, AVFrame *src_frame, double pts,
                       double duration, int64_t pos, int serial) {
     return queue_picture(ffp, src_frame, pts, duration, pos, serial);
