@@ -1049,9 +1049,11 @@ static void stream_close(FFPlayer *ffp) {
 // FFP_MERGE: video_display
 
 /* display the current picture, if any */
-static void video_display2(FFPlayer *ffp) {
-    VideoState *is = ffp->is;
-    if (is->video_st) video_image_display2(ffp);
+static void video_display2(FFPlayer* ffp) {
+    VideoState* is = ffp->is;
+    if (is->video_st) {
+        video_image_display2(ffp);
+    }
 }
 
 static double get_clock(Clock *c) {
@@ -1298,9 +1300,9 @@ static void video_refresh(FFPlayer *opaque, double *remaining_time) {
 
     Frame *sp, *sp2;
 
-    if (!is->paused && get_master_sync_type(is) == AV_SYNC_EXTERNAL_CLOCK &&
-        is->realtime)
+    if (!is->paused && get_master_sync_type(is) == AV_SYNC_EXTERNAL_CLOCK && is->realtime) {
         check_external_clock_speed(is);
+    }
 
     if (!ffp->display_disable && is->show_mode != SHOW_MODE_VIDEO &&
         is->audio_st) {
@@ -1309,8 +1311,7 @@ static void video_refresh(FFPlayer *opaque, double *remaining_time) {
             video_display2(ffp);
             is->last_vis_time = time;
         }
-        *remaining_time =
-            FFMIN(*remaining_time, is->last_vis_time + ffp->rdftspeed - time);
+        *remaining_time = FFMIN(*remaining_time, is->last_vis_time + ffp->rdftspeed - time);
     }
 
     if (is->video_st) {
@@ -3959,8 +3960,7 @@ static VideoState *stream_open(FFPlayer *ffp, const char *filename,
     }
 
     is->initialized_decoder = 0;
-    is->read_tid =
-        SDL_CreateThreadEx(&is->_read_tid, read_thread, ffp, "ff_read");
+    is->read_tid = SDL_CreateThreadEx(&is->_read_tid, read_thread, ffp, "ff_read");
     if (!is->read_tid) {
         av_log(NULL, AV_LOG_FATAL, "SDL_CreateThread(): %s\n", SDL_GetError());
         goto fail;
@@ -4013,12 +4013,15 @@ static int video_refresh_thread(void *arg) {
     VideoState *is = ffp->is;
     double remaining_time = 0.0;
     while (!is->abort_request) {
-        if (remaining_time > 0.0)
+        if (remaining_time > 0.0) {
             av_usleep((int)(int64_t)(remaining_time * 1000000.0));
+        }
+
         remaining_time = REFRESH_RATE;
         if (is->show_mode != SHOW_MODE_NONE &&
-            (!is->paused || is->force_refresh))
-            video_refresh(ffp, &remaining_time);
+            (!is->paused || is->force_refresh)) {
+                video_refresh(ffp, &remaining_time);
+            }
     }
 
     return 0;

@@ -193,6 +193,7 @@ static int func_display_overlay_l(SDL_Vout *vout, SDL_VoutOverlay *overlay) {
     }
 
     // fallback to ANativeWindow
+    //如果都无法显示，就Fallback到直接用ndk nativewindow的api显示
     IJK_EGL_terminate(opaque->egl);
     return SDL_Android_NativeWindow_display_l(native_window, overlay);
 }
@@ -365,8 +366,11 @@ static int SDL_VoutAndroid_releaseBufferProxy_l(
              (proxy->buffer_info.flags & AMEDIACODEC__BUFFER_FLAG_FAKE_FRAME)
                  ? "YES"
                  : "NO");
+
+    //归还到SDL_AMediaCodecBufferProxy对象池                 
     ISDL_Array__push_back(&opaque->overlay_pool, proxy);
 
+    //如果serial已经变化，说明该帧已经无效(比如是seek前的帧)，不显示，丢弃
     if (!SDL_AMediaCodec_isSameSerial(opaque->acodec, proxy->acodec_serial)) {
         ALOGW(
             "%s: [%d] ???????? proxy %d: vout: %d idx: %d render: %s fake: %s",
@@ -379,21 +383,23 @@ static int SDL_VoutAndroid_releaseBufferProxy_l(
         return 0;
     }
 
+    //buffer_index即dequeueOutputBuffer的返回值，小于0说明不是一个图像帧(具体参考官方API)，无需显示
     if (proxy->buffer_index < 0) {
         ALOGE("%s: [%d] invalid AMediaCodec buffer index %d\n", __func__,
               proxy->buffer_id, proxy->buffer_index);
         return 0;
     } else if (proxy->buffer_info.flags & AMEDIACODEC__BUFFER_FLAG_FAKE_FRAME) {
+        //FAKE_FRAME是一个特殊标志，表示当前帧只是占位，不应该显示(具体分析将在ijkplay硬解一文分析)
         proxy->buffer_index = -1;
         return 0;
     }
 
+    //到这里，就可以显示了
     //videoCodec.releaseOutputBuffer(outputBufferIndex, true);
     sdl_amedia_status_t amc_ret = SDL_AMediaCodec_releaseOutputBuffer(
         opaque->acodec, proxy->buffer_index, render);
     if (amc_ret != SDL_AMEDIA_OK) {
-        ALOGW(
-            "%s: [%d] !!!!!!!! proxy %d: vout: %d idx: %d render: %s, fake: %s",
+        ALOGW("%s: [%d] !!!!!!!! proxy %d: vout: %d idx: %d render: %s, fake: %s",
             __func__, proxy->buffer_id, proxy->acodec_serial,
             SDL_AMediaCodec_getSerial(opaque->acodec), proxy->buffer_index,
             render ? "true" : "false",
@@ -403,8 +409,8 @@ static int SDL_VoutAndroid_releaseBufferProxy_l(
         proxy->buffer_index = -1;
         return -1;
     }
-    proxy->buffer_index = -1;
 
+    proxy->buffer_index = -1;
     return 0;
 }
 

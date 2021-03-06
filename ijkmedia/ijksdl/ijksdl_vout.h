@@ -33,6 +33,7 @@
 
 typedef struct SDL_VoutOverlay_Opaque SDL_VoutOverlay_Opaque;
 typedef struct SDL_VoutOverlay SDL_VoutOverlay;
+//显示层
 struct SDL_VoutOverlay {
     int w;           /**< Read-only */
     int h;           /**< Read-only */
@@ -59,6 +60,7 @@ struct SDL_VoutOverlay {
 
 typedef struct SDL_Vout_Opaque SDL_Vout_Opaque;
 typedef struct SDL_Vout SDL_Vout;
+//显示上下文
 struct SDL_Vout {
     SDL_mutex *mutex;
     SDL_Class *opaque_class;
