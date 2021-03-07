@@ -71,6 +71,7 @@ typedef struct IjkThreadPoolTask {
 typedef struct IjkThreadPoolContext {
     pthread_mutex_t lock;
     pthread_cond_t notify;
+    //线程池
     pthread_t *threads;
     IjkThreadPoolTask *queue;
     int thread_count;

@@ -34,6 +34,7 @@ struct IjkIOManagerContext {
     IjkIOApplicationContext *ijkio_app_ctx;
     int auto_save_map;
     void *cur_ffmpeg_ctx;
+    //typedef map<int64_t, void *> IjkMap;
     void *ijk_ctx_map;
     void *opaque;
     char cache_map_path[CACHE_MAP_PATH_MAX_LEN];

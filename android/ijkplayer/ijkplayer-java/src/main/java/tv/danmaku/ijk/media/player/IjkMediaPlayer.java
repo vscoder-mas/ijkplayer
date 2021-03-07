@@ -143,7 +143,7 @@ public final class IjkMediaPlayer extends AbstractMediaPlayer {
     //----------------------------------------
 
     @AccessedByNative
-    private long mNativeMediaPlayer;
+    private long mNativeMediaPlayer; //IjkMediaPlayer指针 *mp
     @AccessedByNative
     private long mNativeMediaDataSource;
 

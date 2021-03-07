@@ -30,7 +30,6 @@ int  ijkio_application_alloc(IjkIOApplicationContext **ph, void *opaque) {
         return -1;
 
     h->opaque = opaque;
-
     *ph = h;
     return 0;
 }

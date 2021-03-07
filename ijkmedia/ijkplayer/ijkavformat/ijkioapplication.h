@@ -50,6 +50,7 @@ struct IjkIOApplicationContext {
     IjkAVIOInterruptCB *ijkio_interrupt_callback;
     char cache_file_path[CACHE_FILE_PATH_MAX_LEN];
     int64_t last_physical_pos;
+    //typedef map<int64_t, void *> IjkMap;
     void *cache_info_map;
     void *opaque;
     int64_t cache_count_bytes;

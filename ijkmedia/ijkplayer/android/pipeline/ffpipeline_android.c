@@ -46,7 +46,6 @@ typedef struct IJKFF_Pipeline_Opaque {
     void *mediacodec_select_callback_opaque;
 
     SDL_Vout *weak_vout;
-
     float left_volume;
     float right_volume;
 } IJKFF_Pipeline_Opaque;

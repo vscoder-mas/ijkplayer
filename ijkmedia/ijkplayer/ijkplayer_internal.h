@@ -41,6 +41,7 @@ struct IjkMediaPlayer {
 
     int mp_state;
     char *data_source;
+    //java层IjkMediaPlayer new WeakReference<IjkMediaPlayer>(this)
     void *weak_thiz;
 
     int restart;

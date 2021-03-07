@@ -715,6 +715,7 @@ typedef struct FFPlayer {
     float pf_playback_volume;
     int pf_playback_volume_changed;
 
+    //java层IjkMediaPlayer new WeakReference<IjkMediaPlayer>(this)
     void *inject_opaque;
     void *ijkio_inject_opaque;
     FFStatistic stat;

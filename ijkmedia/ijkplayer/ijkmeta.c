@@ -30,7 +30,6 @@
 
 struct IjkMediaMeta {
     SDL_mutex *mutex;
-
     AVDictionary *dict;
 
     size_t children_count;
