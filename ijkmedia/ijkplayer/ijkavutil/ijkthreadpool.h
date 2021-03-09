@@ -73,10 +73,12 @@ typedef struct IjkThreadPoolContext {
     pthread_cond_t notify;
     //线程池
     pthread_t *threads;
+    //环形数组实现queue
     IjkThreadPoolTask *queue;
     int thread_count;
     int queue_size;
     int queue_head;
+    //队尾标志，该位置一般为空
     int queue_tail;
     int pending_count;
     int shutdown;

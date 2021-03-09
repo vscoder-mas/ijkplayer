@@ -35,6 +35,8 @@ static void* ijk_threadpool_thread(void* pool_ctx) {
     IjkThreadPoolTask task;
 
     for (;;) {
+        //一个for循环，不断的从任务池中取任务来执行
+        //lock，保证多线程取任务的同步操作
         pthread_mutex_lock(&(ctx->lock));
 
         while ((ctx->pending_count == 0) && (!ctx->shutdown)) {
