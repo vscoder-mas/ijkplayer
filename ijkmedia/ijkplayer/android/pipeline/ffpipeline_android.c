@@ -164,8 +164,8 @@ IJKFF_Pipeline *ffpipeline_create_from_android(FFPlayer *ffp) {
     pipeline->func_open_audio_output = func_open_audio_output;
     pipeline->func_init_video_decoder = func_init_video_decoder;
     pipeline->func_config_video_decoder = func_config_video_decoder;
-
     return pipeline;
+
 fail:
     ffpipeline_free_p(&pipeline);
     return NULL;
@@ -205,7 +205,6 @@ jobject ffpipeline_get_surface_as_global_ref(JNIEnv *env,
 
 void ffpipeline_set_vout(IJKFF_Pipeline *pipeline, SDL_Vout *vout) {
     if (!check_ffpipeline(pipeline, __func__)) return;
-
     IJKFF_Pipeline_Opaque *opaque = pipeline->opaque;
     opaque->weak_vout = vout;
 }

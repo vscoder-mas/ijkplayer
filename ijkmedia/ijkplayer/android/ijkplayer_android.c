@@ -45,7 +45,7 @@ IjkMediaPlayer *ijkmp_android_create(int (*msg_loop)(void *)) {
     mp->ffplayer->pipeline = ffpipeline_create_from_android(mp->ffplayer);
     if (!mp->ffplayer->pipeline) goto fail;
 
-    // 互相绑定
+    // 互相绑定 pipeline->opaque->weak_vout
     ffpipeline_set_vout(mp->ffplayer->pipeline, mp->ffplayer->vout);
     return mp;
 

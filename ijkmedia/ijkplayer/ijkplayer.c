@@ -354,9 +354,7 @@ static int ijkmp_prepare_async_l(IjkMediaPlayer *mp) {
     MPST_RET_IF_EQ(mp->mp_state, MP_STATE_END);
 
     assert(mp->data_source);
-
     ijkmp_change_state_l(mp, MP_STATE_ASYNC_PREPARING);
-
     msg_queue_start(&mp->ffplayer->msg_queue);
 
     // released in msg_loop

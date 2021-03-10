@@ -674,10 +674,14 @@ static int frame_queue_init(FrameQueue *f, PacketQueue *pktq, int max_size,
         return AVERROR(ENOMEM);
     }
     f->pktq = pktq;
+    //f->max_size:16
     f->max_size = FFMIN(max_size, FRAME_QUEUE_SIZE);
+    //非0的值最终会变为1
     f->keep_last = !!keep_last;
-    for (i = 0; i < f->max_size; i++)
+    for (i = 0; i < f->max_size; i++) {
         if (!(f->queue[i].frame = av_frame_alloc())) return AVERROR(ENOMEM);
+    }
+
     return 0;
 }
 
@@ -1297,7 +1301,6 @@ static void video_refresh(FFPlayer *opaque, double *remaining_time) {
     FFPlayer *ffp = opaque;
     VideoState *is = ffp->is;
     double time;
-
     Frame *sp, *sp2;
 
     if (!is->paused && get_master_sync_type(is) == AV_SYNC_EXTERNAL_CLOCK && is->realtime) {
@@ -2040,9 +2043,9 @@ static int audio_thread(void *arg) {
 
     do {
         ffp_audio_statistic_l(ffp);
-        if ((got_frame = decoder_decode_frame(ffp, &is->auddec, frame, NULL)) <
-            0)
+        if ((got_frame = decoder_decode_frame(ffp, &is->auddec, frame, NULL)) < 0) {
             goto the_end;
+        }
 
         if (got_frame) {
             tb = (AVRational){1, frame->sample_rate};
@@ -2991,7 +2994,6 @@ static int stream_component_open(FFPlayer *ffp, int stream_index) {
                                         ic->streams[stream_index]->codecpar);
     if (ret < 0) goto fail;
     av_codec_set_pkt_timebase(avctx, ic->streams[stream_index]->time_base);
-
     codec = avcodec_find_decoder(avctx->codec_id);
 
     switch (avctx->codec_type) {
@@ -3215,14 +3217,14 @@ static int stream_component_open(FFPlayer *ffp, int stream_index) {
             break;
         default:
             break;
-    }
+    } //switch (avctx->codec_type) {
+
     goto out;
 
 fail:
     avcodec_free_context(&avctx);
 out:
     av_dict_free(&opts);
-
     return ret;
 }
 
@@ -3292,6 +3294,7 @@ static int read_thread(void *arg) {
         ret = AVERROR(ENOMEM);
         goto fail;
     }
+
     ic->interrupt_callback.callback = decode_interrupt_cb;
     ic->interrupt_callback.opaque = is;
     if (!av_dict_get(ffp->format_opts, "scan_all_pmts", NULL,
@@ -3316,8 +3319,7 @@ static int read_thread(void *arg) {
 
     if (ffp->iformat_name)
         is->iformat = av_find_input_format(ffp->iformat_name);
-    err =
-        avformat_open_input(&ic, is->filename, is->iformat, &ffp->format_opts);
+    err = avformat_open_input(&ic, is->filename, is->iformat, &ffp->format_opts);
     if (err < 0) {
         print_error(is->filename, err);
         ret = -1;
@@ -3336,10 +3338,11 @@ static int read_thread(void *arg) {
         goto fail;
 #endif
     }
+
     is->ic = ic;
-
-    if (ffp->genpts) ic->flags |= AVFMT_FLAG_GENPTS;
-
+    if (ffp->genpts) {
+        ic->flags |= AVFMT_FLAG_GENPTS;
+    }
     av_format_inject_global_side_data(ic);
     //
     // AVDictionary **opts;
@@ -3366,11 +3369,14 @@ static int read_thread(void *arg) {
                     break;
                 }
             }
+            //if (avformat_find_stream_info(pFormatContext, NULL) < 0) {
             err = avformat_find_stream_info(ic, opts);
         } while (0);
         ffp_notify_msg1(ffp, FFP_MSG_FIND_STREAM_INFO);
 
-        for (i = 0; i < orig_nb_streams; i++) av_dict_free(&opts[i]);
+        for (i = 0; i < orig_nb_streams; i++) {
+            av_dict_free(&opts[i]);
+        }
         av_freep(&opts);
 
         if (err < 0) {
@@ -3380,6 +3386,7 @@ static int read_thread(void *arg) {
             goto fail;
         }
     }
+
     if (ic->pb)
         ic->pb->eof_reached = 0;  // FIXME hack, ffplay maybe should not use
                                   // avio_feof() to test for the end
@@ -3402,10 +3409,11 @@ static int read_thread(void *arg) {
     /* if seeking requested, we execute it */
     if (ffp->start_time != AV_NOPTS_VALUE) {
         int64_t timestamp;
-
         timestamp = ffp->start_time;
         /* add the stream start time */
-        if (ic->start_time != AV_NOPTS_VALUE) timestamp += ic->start_time;
+        if (ic->start_time != AV_NOPTS_VALUE) {
+            timestamp += ic->start_time;
+        }
         ret = avformat_seek_file(ic, -1, INT64_MIN, timestamp, INT64_MAX, 0);
         if (ret < 0) {
             av_log(NULL, AV_LOG_WARNING,
@@ -3415,7 +3423,6 @@ static int read_thread(void *arg) {
     }
 
     is->realtime = is_realtime(ic);
-
     av_dump_format(ic, 0, is->filename, 0);
 
     int video_stream_count = 0;
@@ -3431,16 +3438,18 @@ static int read_thread(void *arg) {
                 st_index[type] = i;
 
         // choose first h264
-
         if (type == AVMEDIA_TYPE_VIDEO) {
             enum AVCodecID codec_id = st->codecpar->codec_id;
             video_stream_count++;
             if (codec_id == AV_CODEC_ID_H264) {
                 h264_stream_count++;
-                if (first_h264_stream < 0) first_h264_stream = i;
+                if (first_h264_stream < 0) {
+                    first_h264_stream = i;
+                }
             }
         }
     }
+
     if (video_stream_count > 1 && st_index[AVMEDIA_TYPE_VIDEO] < 0) {
         st_index[AVMEDIA_TYPE_VIDEO] = first_h264_stream;
         av_log(NULL, AV_LOG_WARNING,
@@ -3946,7 +3955,6 @@ static VideoState *stream_open(FFPlayer *ffp, const char *filename,
     is->audio_volume = ffp->startup_volume;
     is->muted = 0;
     is->av_sync_type = ffp->av_sync_type;
-
     is->play_mutex = SDL_CreateMutex();
     is->accurate_seek_mutex = SDL_CreateMutex();
     ffp->is = is;
@@ -3966,6 +3974,7 @@ static VideoState *stream_open(FFPlayer *ffp, const char *filename,
         goto fail;
     }
 
+    //异步初始化decoder逻辑
     if (ffp->async_init_decoder && !ffp->video_disable &&
         ffp->video_mime_type && strlen(ffp->video_mime_type) > 0 &&
         ffp->mediacodec_default_name &&
@@ -3977,9 +3986,10 @@ static VideoState *stream_open(FFPlayer *ffp, const char *filename,
             ffp->node_vdec = ffpipeline_init_video_decoder(ffp->pipeline, ffp);
         }
     }
-    is->initialized_decoder = 1;
 
+    is->initialized_decoder = 1;
     return is;
+
 fail:
     is->initialized_decoder = 1;
     is->abort_request = true;

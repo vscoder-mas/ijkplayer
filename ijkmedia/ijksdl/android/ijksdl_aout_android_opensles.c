@@ -63,11 +63,10 @@ typedef struct SDL_Aout_Opaque {
     int frames_per_buffer;
     int bytes_per_buffer;
 
+    //OpenSLES相关参数
     SLObjectItf slObject;
     SLEngineItf slEngine;
-
     SLObjectItf slOutputMixObject;
-
     SLObjectItf slPlayerObject;
     SLAndroidSimpleBufferQueueItf slBufferQueueItf;
     SLVolumeItf slVolumeItf;
@@ -541,8 +540,8 @@ SDL_Aout *SDL_AoutAndroid_CreateForOpenSLES() {
     aout->close_audio = aout_close_audio;
     aout->set_volume = aout_set_volume;
     aout->func_get_latency_seconds = aout_get_latency_seconds;
-
     return aout;
+    
 fail:
     aout_free_l(aout);
     return NULL;

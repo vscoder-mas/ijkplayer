@@ -181,7 +181,6 @@ typedef struct PacketQueue {
     MyAVPacketNode *recycle_pkt;
     int recycle_count;
     int alloc_count;
-
     int is_buffer_indicator;
 } PacketQueue;
 
@@ -209,8 +208,9 @@ typedef struct AudioParams {
 typedef struct Clock {
     double pts;       /* clock base */
     double pts_drift; /* clock base minus time at which we updated the clock */
-    double last_updated;
+    double last_updated; //初始化当前时间
     double speed;
+    //初始化-1
     int serial; /* clock is based on a packet with this serial */
     int paused;
     int *queue_serial; /* pointer to the current packet queue serial, used for
@@ -263,6 +263,7 @@ typedef struct Decoder {
     AVPacket pkt;
     //表示要发送的pkt
     AVPacket pkt_temp;
+    //VideoState->videoq
     PacketQueue *queue;
     AVCodecContext *avctx;
     int pkt_serial;
@@ -271,7 +272,7 @@ typedef struct Decoder {
     int packet_pending;
     int bfsc_ret;
     uint8_t *bfsc_data;
-
+    //VideoState->continue_read_thread
     SDL_cond *empty_queue_cond;
     int64_t start_pts;
     AVRational start_pts_tb;
@@ -302,6 +303,7 @@ typedef struct VideoState {
     int read_pause_return;
 #endif
     AVFormatContext *ic;
+    //是否实时播放，直播
     int realtime;
 
     Clock audclk;
@@ -316,8 +318,8 @@ typedef struct VideoState {
     Decoder viddec;
     Decoder subdec;
 
+    //初始化-1
     int audio_stream_index;
-
     int av_sync_type;
     void *handle;
     double audio_clock;
@@ -370,7 +372,7 @@ typedef struct VideoState {
     SDL_Texture *vis_texture;
     SDL_Texture *sub_texture;
 #endif
-
+    //初始化-1
     int subtitle_stream_index;
     AVStream *subtitle_st;
     PacketQueue subtitleq;
@@ -378,6 +380,7 @@ typedef struct VideoState {
     double frame_timer;
     double frame_last_returned_time;
     double frame_last_filter_delay;
+    //初始化-1
     int video_stream_index;
     AVStream *video_st;
     PacketQueue videoq;
@@ -402,6 +405,7 @@ typedef struct VideoState {
     AVFilterGraph *agraph;              // audio filter graph
 #endif
 
+    //初始化-1
     int last_video_stream, last_audio_stream, last_subtitle_stream;
 
     SDL_cond *continue_read_thread;
@@ -419,7 +423,6 @@ typedef struct VideoState {
     int is_video_high_res;  // above 1080p
 
     PacketQueue *buffer_indicator_queue;
-
     volatile int latest_video_seek_load_serial;
     volatile int latest_audio_seek_load_serial;
     volatile int64_t latest_seek_load_start_at;
@@ -593,10 +596,12 @@ typedef struct FFPlayer {
     int screen_width;
     int screen_height;
 #endif
+    //初始值0
     int audio_disable;
     int video_disable;
     int subtitle_disable;
     const char *wanted_stream_spec[AVMEDIA_TYPE_NB];
+    //初始值-1
     int seek_by_bytes;
     int display_disable;
     int show_status;
@@ -633,6 +638,7 @@ typedef struct FFPlayer {
     char *vfilter0;
 #endif
     int autorotate;
+    //初始化1
     int find_stream_info;
     unsigned sws_flags;
 
@@ -761,6 +767,7 @@ inline static void ffp_reset_internal(FFPlayer *ffp) {
     ffp->display_disable = 0;
     ffp->show_status = 0;
     ffp->av_sync_type = AV_SYNC_AUDIO_MASTER;
+    //#define AV_NOPTS_VALUE          ((int64_t)UINT64_C(0x8000000000000000))
     ffp->start_time = AV_NOPTS_VALUE;
     ffp->duration = AV_NOPTS_VALUE;
     ffp->fast = 1;
@@ -815,7 +822,6 @@ inline static void ffp_reset_internal(FFPlayer *ffp) {
     ffp->accurate_seek_timeout = MAX_ACCURATE_SEEK_TIMEOUT;
 
     ffp->playable_duration_ms = 0;
-
     ffp->packet_buffering = 1;
     ffp->pictq_size = VIDEO_PICTURE_QUEUE_SIZE_DEFAULT;  // option
     ffp->max_fps = 31;                                   // option
@@ -835,7 +841,6 @@ inline static void ffp_reset_internal(FFPlayer *ffp) {
 
     ffp->opensles = 0;           // option
     ffp->soundtouch_enable = 0;  // option
-
     ffp->iformat_name = NULL;  // option
 
     ffp->no_time_adjust = 0;              // option
@@ -846,7 +851,6 @@ inline static void ffp_reset_internal(FFPlayer *ffp) {
     ffp->render_wait_start = 0;
 
     ijkmeta_reset(ffp->meta);
-
     SDL_SpeedSamplerReset(&ffp->vfps_sampler);
     SDL_SpeedSamplerReset(&ffp->vdps_sampler);
 
@@ -860,9 +864,7 @@ inline static void ffp_reset_internal(FFPlayer *ffp) {
 
     av_application_closep(&ffp->app_ctx);
     ijkio_manager_destroyp(&ffp->ijkio_manager_ctx);
-
     msg_queue_flush(&ffp->msg_queue);
-
     ffp->inject_opaque = NULL;
     ffp->ijkio_inject_opaque = NULL;
     ffp_reset_statistic(&ffp->stat);

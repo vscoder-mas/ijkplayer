@@ -31,6 +31,7 @@
 
 typedef struct SDL_Aout_Opaque SDL_Aout_Opaque;
 typedef struct SDL_Aout SDL_Aout;
+//音频相关的函数指针，例如:open/close/flush/pause
 struct SDL_Aout {
     SDL_mutex *mutex;
     double minimal_latency_seconds;

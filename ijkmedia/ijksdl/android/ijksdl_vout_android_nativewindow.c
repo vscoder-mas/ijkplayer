@@ -268,11 +268,8 @@ static void SDL_VoutAndroid_SetNativeWindow_l(SDL_Vout *vout,
 
     IJK_EGL_terminate(opaque->egl);
     SDL_VoutAndroid_invalidateAllBuffers_l(vout);
-
     if (opaque->native_window) ANativeWindow_release(opaque->native_window);
-
     if (native_window) ANativeWindow_acquire(native_window);
-
     opaque->native_window = native_window;
     opaque->null_native_window_warned = 0;
 }
