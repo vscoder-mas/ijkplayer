@@ -3097,8 +3097,9 @@ static int stream_component_open(FFPlayer *ffp, int stream_index) {
 
             /* prepare audio output */
             if ((ret = audio_open(ffp, channel_layout, nb_channels, sample_rate,
-                                  &is->audio_tgt)) < 0)
+                                  &is->audio_tgt)) < 0) {
                 goto fail;
+            }
             ffp_set_audio_codec_info(ffp, AVCODEC_MODULE_NAME,
                                      avcodec_get_name(avctx->codec_id));
             is->audio_hw_buf_size = ret;
@@ -3533,7 +3534,9 @@ static int read_thread(void *arg) {
         assert("invalid streams");
     }
 
-    if (ffp->infinite_buffer < 0 && is->realtime) ffp->infinite_buffer = 1;
+    if (ffp->infinite_buffer < 0 && is->realtime) {
+        ffp->infinite_buffer = 1;
+    }
 
     if (!ffp->render_wait_start && !ffp->start_on_prepared)
         toggle_pause(ffp, 1);
@@ -3666,7 +3669,8 @@ static int read_thread(void *arg) {
             ffp_notify_msg3(ffp, FFP_MSG_SEEK_COMPLETE,
                             (int)fftime_to_milliseconds(seek_target), ret);
             ffp_toggle_buffering(ffp, 1);
-        }
+        } //if (is->seek_req) {
+
         if (is->queue_attachments_req) {
             if (is->video_st &&
                 (is->video_st->disposition & AV_DISPOSITION_ATTACHED_PIC)) {
@@ -3706,6 +3710,7 @@ static int read_thread(void *arg) {
             SDL_UnlockMutex(wait_mutex);
             continue;
         }
+
         if ((!is->paused || completed) &&
             (!is->audio_st || (is->auddec.finished == is->audioq.serial &&
                                frame_queue_nb_remaining(&is->sampq) == 0)) &&
@@ -3748,6 +3753,7 @@ static int read_thread(void *arg) {
                 }
             }
         }
+
         pkt->flags = 0;
         ret = av_read_frame(ic, pkt);
         if (ret < 0) {
@@ -3877,7 +3883,7 @@ static int read_thread(void *arg) {
                 }
             }
         }
-    }
+    } //for (;;) {
 
     ret = 0;
 fail:

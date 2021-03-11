@@ -122,14 +122,12 @@ void ijkmeta_append_child_l(IjkMediaMeta *meta, IjkMediaMeta *child) {
 
 void ijkmeta_set_int64_l(IjkMediaMeta *meta, const char *name, int64_t value) {
     if (!meta) return;
-
     av_dict_set_int(&meta->dict, name, value, 0);
 }
 
 void ijkmeta_set_string_l(IjkMediaMeta *meta, const char *name,
                           const char *value) {
     if (!meta) return;
-
     av_dict_set(&meta->dict, name, value, 0);
 }
 

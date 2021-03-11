@@ -3283,7 +3283,7 @@ static int read_thread(void *arg) {
             if (is->paused) {
                 //如果暂停调用av_read_pause
                 is->read_pause_return = av_read_pause(ic);
-            }  else {
+            } else {
                 //如果恢复播放调用av_read_play
                 av_read_play(ic);
             }
@@ -3486,7 +3486,7 @@ static int read_thread(void *arg) {
         } else {
             av_packet_unref(pkt);
         }
-    }
+    } //for (;;) {
 
     ret = 0;
  fail:
