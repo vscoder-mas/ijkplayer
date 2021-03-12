@@ -799,6 +799,7 @@ static int feed_input_buffer(JNIEnv *env, IJKFF_Pipenode *node, int64_t timeUs,
                     // resume automatically
                     // SDL_AMediaCodec_start(opaque->acodec);
                 }
+
                 opaque->acodec_flush_request = false;
                 SDL_CondSignal(opaque->acodec_cond);
                 SDL_UnlockMutex(opaque->acodec_mutex);
@@ -952,7 +953,6 @@ static int feed_input_buffer(JNIEnv *env, IJKFF_Pipenode *node, int64_t timeUs,
         //如果需要重新配置MediaCodec，则重新创建一个
         if (ffpipeline_is_surface_need_reconfigure_l(pipeline)) {
             jobject new_surface = NULL;
-
             // request reconfigure before lock, or never get mutex
             ffpipeline_lock_surface(pipeline);
             ffpipeline_set_surface_need_reconfigure_l(pipeline, false);
@@ -982,7 +982,6 @@ static int feed_input_buffer(JNIEnv *env, IJKFF_Pipenode *node, int64_t timeUs,
                 opaque->acodec_reconfigure_request = false;
                 SDL_CondSignal(opaque->acodec_cond);
                 SDL_UnlockMutex(opaque->acodec_mutex);
-
                 J4A_DeleteGlobalRef__p(env, &new_surface);
 
                 if (ret != 0) {
@@ -1857,11 +1856,8 @@ fallback_to_ffplay:
 
 static int func_flush(IJKFF_Pipenode *node) {
     IJKFF_Pipenode_Opaque *opaque = node->opaque;
-
     if (!opaque) return -1;
-
     opaque->acodec_flush_request = true;
-
     return 0;
 }
 

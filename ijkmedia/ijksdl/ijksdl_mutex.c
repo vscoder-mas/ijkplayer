@@ -23,17 +23,17 @@
  */
 
 #include "ijksdl_mutex.h"
-#include <errno.h>
+
 #include <assert.h>
+#include <errno.h>
 #include <sys/time.h>
+
 #include "ijksdl_inc_internal.h"
 
-SDL_mutex *SDL_CreateMutex(void)
-{
+SDL_mutex *SDL_CreateMutex(void) {
     SDL_mutex *mutex;
-    mutex = (SDL_mutex *) mallocz(sizeof(SDL_mutex));
-    if (!mutex)
-        return NULL;
+    mutex = (SDL_mutex *)mallocz(sizeof(SDL_mutex));
+    if (!mutex) return NULL;
 
     if (pthread_mutex_init(&mutex->id, NULL) != 0) {
         free(mutex);
@@ -43,46 +43,36 @@ SDL_mutex *SDL_CreateMutex(void)
     return mutex;
 }
 
-void SDL_DestroyMutex(SDL_mutex *mutex)
-{
+void SDL_DestroyMutex(SDL_mutex *mutex) {
     if (mutex) {
         pthread_mutex_destroy(&mutex->id);
         free(mutex);
     }
 }
 
-void SDL_DestroyMutexP(SDL_mutex **mutex)
-{
+void SDL_DestroyMutexP(SDL_mutex **mutex) {
     if (mutex) {
         SDL_DestroyMutex(*mutex);
         *mutex = NULL;
     }
 }
 
-int SDL_LockMutex(SDL_mutex *mutex)
-{
+int SDL_LockMutex(SDL_mutex *mutex) {
     assert(mutex);
-    if (!mutex)
-        return -1;
-
+    if (!mutex) return -1;
     return pthread_mutex_lock(&mutex->id);
 }
 
-int SDL_UnlockMutex(SDL_mutex *mutex)
-{
+int SDL_UnlockMutex(SDL_mutex *mutex) {
     assert(mutex);
-    if (!mutex)
-        return -1;
-
+    if (!mutex) return -1;
     return pthread_mutex_unlock(&mutex->id);
 }
 
-SDL_cond *SDL_CreateCond(void)
-{
+SDL_cond *SDL_CreateCond(void) {
     SDL_cond *cond;
-    cond = (SDL_cond *) mallocz(sizeof(SDL_cond));
-    if (!cond)
-        return NULL;
+    cond = (SDL_cond *)mallocz(sizeof(SDL_cond));
+    if (!cond) return NULL;
 
     if (pthread_cond_init(&cond->id, NULL) != 0) {
         free(cond);
@@ -92,43 +82,35 @@ SDL_cond *SDL_CreateCond(void)
     return cond;
 }
 
-void SDL_DestroyCond(SDL_cond *cond)
-{
+void SDL_DestroyCond(SDL_cond *cond) {
     if (cond) {
         pthread_cond_destroy(&cond->id);
         free(cond);
     }
 }
 
-void SDL_DestroyCondP(SDL_cond **cond)
-{
-
+void SDL_DestroyCondP(SDL_cond **cond) {
     if (cond) {
         SDL_DestroyCond(*cond);
         *cond = NULL;
     }
 }
 
-int SDL_CondSignal(SDL_cond *cond)
-{
+int SDL_CondSignal(SDL_cond *cond) {
     assert(cond);
-    if (!cond)
-        return -1;
+    if (!cond) return -1;
 
     return pthread_cond_signal(&cond->id);
 }
 
-int SDL_CondBroadcast(SDL_cond *cond)
-{
+int SDL_CondBroadcast(SDL_cond *cond) {
     assert(cond);
-    if (!cond)
-        return -1;
+    if (!cond) return -1;
 
     return pthread_cond_broadcast(&cond->id);
 }
 
-int SDL_CondWaitTimeout(SDL_cond *cond, SDL_mutex *mutex, uint32_t ms)
-{
+int SDL_CondWaitTimeout(SDL_cond *cond, SDL_mutex *mutex, uint32_t ms) {
     int retval;
     struct timeval delta;
     struct timespec abstime;
@@ -163,12 +145,10 @@ int SDL_CondWaitTimeout(SDL_cond *cond, SDL_mutex *mutex, uint32_t ms)
     return -1;
 }
 
-int SDL_CondWait(SDL_cond *cond, SDL_mutex *mutex)
-{
+int SDL_CondWait(SDL_cond *cond, SDL_mutex *mutex) {
     assert(cond);
     assert(mutex);
-    if (!cond || !mutex)
-        return -1;
+    if (!cond || !mutex) return -1;
 
     return pthread_cond_wait(&cond->id, &mutex->id);
 }

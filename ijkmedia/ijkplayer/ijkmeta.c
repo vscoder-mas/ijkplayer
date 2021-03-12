@@ -31,16 +31,15 @@
 struct IjkMediaMeta {
     SDL_mutex *mutex;
     AVDictionary *dict;
-
     size_t children_count;
     size_t children_capacity;
+    //指向(IjkMediaMeta *)的指针，动态数组形式
     IjkMediaMeta **children;
 };
 
 IjkMediaMeta *ijkmeta_create() {
     IjkMediaMeta *meta = (IjkMediaMeta *)calloc(1, sizeof(IjkMediaMeta));
     if (!meta) return NULL;
-
     meta->mutex = SDL_CreateMutex();
     if (!meta->mutex) goto fail;
     return meta;
@@ -77,20 +76,17 @@ void ijkmeta_destroy(IjkMediaMeta *meta) {
 
 void ijkmeta_destroy_p(IjkMediaMeta **meta) {
     if (!meta) return;
-
     ijkmeta_destroy(*meta);
     *meta = NULL;
 }
 
 void ijkmeta_lock(IjkMediaMeta *meta) {
     if (!meta || !meta->mutex) return;
-
     SDL_LockMutex(meta->mutex);
 }
 
 void ijkmeta_unlock(IjkMediaMeta *meta) {
     if (!meta || !meta->mutex) return;
-
     SDL_UnlockMutex(meta->mutex);
 }
 
@@ -168,7 +164,8 @@ void ijkmeta_set_avformat_context_l(IjkMediaMeta *meta, AVFormatContext *ic) {
     if (ic->start_time != AV_NOPTS_VALUE)
         ijkmeta_set_int64_l(meta, IJKM_KEY_START_US, ic->start_time);
 
-    if (ic->bit_rate) ijkmeta_set_int64_l(meta, IJKM_KEY_BITRATE, ic->bit_rate);
+    if (ic->bit_rate) 
+        ijkmeta_set_int64_l(meta, IJKM_KEY_BITRATE, ic->bit_rate);
 
     IjkMediaMeta *stream_meta = NULL;
     for (int i = 0; i < ic->nb_streams; i++) {
@@ -268,16 +265,17 @@ void ijkmeta_set_avformat_context_l(IjkMediaMeta *meta, AVFormatContext *ic) {
             }
         }
 
-        AVDictionaryEntry *lang =
-            av_dict_get(st->metadata, "language", NULL, 0);
+        AVDictionaryEntry *lang = av_dict_get(st->metadata, "language", NULL, 0);
         if (lang && lang->value)
             ijkmeta_set_string_l(stream_meta, IJKM_KEY_LANGUAGE, lang->value);
 
         ijkmeta_append_child_l(meta, stream_meta);
+        //指针=NULL, 没有free，空间还存在, stram_meta只是指向地址的一个指针变量
         stream_meta = NULL;
-    }
+    } //for (int i = 0; i < ic->nb_streams; i++) {
 
-    if (!stream_meta) ijkmeta_destroy_p(&stream_meta);
+    if (!stream_meta)
+        ijkmeta_destroy_p(&stream_meta);
 }
 
 const char *ijkmeta_get_string_l(IjkMediaMeta *meta, const char *name) {
@@ -301,14 +299,11 @@ int64_t ijkmeta_get_int64_l(IjkMediaMeta *meta, const char *name,
 
 size_t ijkmeta_get_children_count_l(IjkMediaMeta *meta) {
     if (!meta || !meta->children) return 0;
-
     return meta->children_count;
 }
 
 IjkMediaMeta *ijkmeta_get_child_l(IjkMediaMeta *meta, size_t index) {
     if (!meta) return NULL;
-
     if (index >= meta->children_count) return NULL;
-
     return meta->children[index];
 }

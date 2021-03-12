@@ -188,13 +188,10 @@ static int packet_queue_put_private(PacketQueue *q, AVPacket *pkt) {
 
 static int packet_queue_put(PacketQueue *q, AVPacket *pkt) {
     int ret;
-
     SDL_LockMutex(q->mutex);
     ret = packet_queue_put_private(q, pkt);
     SDL_UnlockMutex(q->mutex);
-
     if (pkt != &flush_pkt && ret < 0) av_packet_unref(pkt);
-
     return ret;
 }
 
@@ -3165,7 +3162,6 @@ static int stream_component_open(FFPlayer *ffp, int stream_index) {
             }
 
             is->queue_attachments_req = 1;
-
             if (ffp->max_fps >= 0) {
                 if (is->video_st->avg_frame_rate.den &&
                     is->video_st->avg_frame_rate.num) {
@@ -3587,22 +3583,23 @@ static int read_thread(void *arg) {
 #endif
         if (is->seek_req) {
             int64_t seek_target = is->seek_pos;
-            int64_t seek_min =
-                is->seek_rel > 0 ? seek_target - is->seek_rel + 2 : INT64_MIN;
-            int64_t seek_max =
-                is->seek_rel < 0 ? seek_target - is->seek_rel - 2 : INT64_MAX;
+            int64_t seek_min = is->seek_rel > 0 ? seek_target - is->seek_rel + 2 : INT64_MIN;
+            int64_t seek_max = is->seek_rel < 0 ? seek_target - is->seek_rel - 2 : INT64_MAX;
             // FIXME the +-2 is due to rounding being not done in the correct
             // direction in generation
             //      of the seek_pos/seek_rel variables
-
             ffp_toggle_buffering(ffp, 1);
             ffp_notify_msg3(ffp, FFP_MSG_BUFFERING_UPDATE, 0, 0);
+            //int64_t real_value = seconds * AV_TIME_BASE;
+            //avformat_seek_file(pFormatContext, -1, INT64_MIN, real_value, INT64_MAX, 0);
             ret = avformat_seek_file(is->ic, -1, seek_min, seek_target,
                                      seek_max, is->seek_flags);
             if (ret < 0) {
                 av_log(NULL, AV_LOG_ERROR, "%s: error while seeking\n",
                        is->ic->filename);
             } else {
+                //冲洗各解码器缓存帧
+                //清除PacketQueue的缓存，并放入一个flush_pkt;放入的flush_pkt可以让PacketQueue的serial增1，以区分seek前后的数据
                 if (is->audio_stream_index >= 0) {
                     packet_queue_flush(&is->audioq);
                     packet_queue_put(&is->audioq, &flush_pkt);
@@ -3615,12 +3612,14 @@ static int read_thread(void *arg) {
                 }
                 if (is->video_stream_index >= 0) {
                     if (ffp->node_vdec) {
+                        //这里调用解码器的flush，即pipenode的func_flush函数
+                        //设置 IJKFF_Pipenode_Opaque *opaque->acodec_flush_request=true，进行flush
                         ffpipenode_flush(ffp->node_vdec);
                     }
-                    //这里调用解码器的flush，即pipenode的func_flush函数
                     packet_queue_flush(&is->videoq);
                     packet_queue_put(&is->videoq, &flush_pkt);
                 }
+
                 if (is->seek_flags & AVSEEK_FLAG_BYTE) {
                     set_clock(&is->extclk, NAN, 0);
                 } else {
@@ -3686,6 +3685,7 @@ static int read_thread(void *arg) {
         }
 
         /* if the queue are full, no need to read more */
+        //控制缓冲区大小
         if (ffp->infinite_buffer < 1 && !is->seek_req &&
 #ifdef FFP_MERGE
             (is->audioq.size + is->videoq.size + is->subtitleq.size >
@@ -3705,21 +3705,20 @@ static int read_thread(void *arg) {
                 ffp_toggle_buffering(ffp, 0);
             }
             /* wait 10 ms */
+            // pthread_cond_timedwait wait超时后会继续执行
             SDL_LockMutex(wait_mutex);
             SDL_CondWaitTimeout(is->continue_read_thread, wait_mutex, 10);
             SDL_UnlockMutex(wait_mutex);
             continue;
         }
 
+        //播放完成，循环播放
+        //loop: 控制播放次数（当前这次也算在内，也就是最小就是1次了），0表示无限次
         if ((!is->paused || completed) &&
-            (!is->audio_st || (is->auddec.finished == is->audioq.serial &&
-                               frame_queue_nb_remaining(&is->sampq) == 0)) &&
-            (!is->video_st || (is->viddec.finished == is->videoq.serial &&
-                               frame_queue_nb_remaining(&is->pictq) == 0))) {
+            (!is->audio_st || (is->auddec.finished == is->audioq.serial && frame_queue_nb_remaining(&is->sampq) == 0)) &&
+            (!is->video_st || (is->viddec.finished == is->videoq.serial && frame_queue_nb_remaining(&is->pictq) == 0))) {
             if (ffp->loop != 1 && (!ffp->loop || --ffp->loop)) {
-                stream_seek(
-                    is, ffp->start_time != AV_NOPTS_VALUE ? ffp->start_time : 0,
-                    0, 0);
+                stream_seek(is, ffp->start_time != AV_NOPTS_VALUE ? ffp->start_time : 0, 0, 0);
             } else if (ffp->autoexit) {
                 ret = AVERROR_EOF;
                 goto fail;
@@ -3737,17 +3736,15 @@ static int read_thread(void *arg) {
                 } else {
                     completed = 1;
                     ffp->auto_resume = 0;
-
                     // TODO: 0 it's a bit early to notify complete here
                     ffp_toggle_buffering(ffp, 0);
                     toggle_pause(ffp, 1);
                     if (ffp->error) {
-                        av_log(ffp, AV_LOG_INFO,
-                               "ffp_toggle_buffering: error: %d\n", ffp->error);
+                        av_log(ffp, AV_LOG_INFO, "ffp_toggle_buffering: error: %d\n", ffp->error);
                         ffp_notify_msg1(ffp, FFP_MSG_ERROR);
                     } else {
-                        av_log(ffp, AV_LOG_INFO,
-                               "ffp_toggle_buffering: completed: OK\n");
+                        //正常播放完成
+                        av_log(ffp, AV_LOG_INFO, "ffp_toggle_buffering: completed: OK\n");
                         ffp_notify_msg1(ffp, FFP_MSG_COMPLETED);
                     }
                 }
@@ -3757,6 +3754,8 @@ static int read_thread(void *arg) {
         pkt->flags = 0;
         ret = av_read_frame(ic, pkt);
         if (ret < 0) {
+            //ic: AVFormatContext
+            //文件读取完了，调用packet_queue_put_nullpacket通知解码线程
             int pb_eof = 0;
             int pb_error = 0;
             if ((ret == AVERROR_EOF || avio_feof(ic->pb)) && !is->eof) {
@@ -3807,6 +3806,8 @@ static int read_thread(void *arg) {
                 ffp_toggle_buffering(ffp, 0);
                 SDL_Delay(100);
             }
+
+            /* wait 10 ms */
             SDL_LockMutex(wait_mutex);
             SDL_CondWaitTimeout(is->continue_read_thread, wait_mutex, 10);
             SDL_UnlockMutex(wait_mutex);
@@ -3828,28 +3829,23 @@ static int read_thread(void *arg) {
             }
         }
 
-        /* check if packet is in play range specified by user, then queue,
-         * otherwise discard */
+        /* check if packet is in play range specified by user, then queue, otherwise discard */
+        // 判断当前packet是否在播放范围内，是则入列，否则丢弃
+        // ic中的时间单位是us
         stream_start_time = ic->streams[pkt->stream_index]->start_time;
         pkt_ts = pkt->pts == AV_NOPTS_VALUE ? pkt->dts : pkt->pts;
-        pkt_in_play_range =
-            ffp->duration == AV_NOPTS_VALUE ||
-            (pkt_ts -
-             (stream_start_time != AV_NOPTS_VALUE ? stream_start_time : 0)) *
+        pkt_in_play_range = ffp->duration == AV_NOPTS_VALUE ||
+            (pkt_ts - (stream_start_time != AV_NOPTS_VALUE ? stream_start_time : 0)) *
                         av_q2d(ic->streams[pkt->stream_index]->time_base) -
-                    (double)(ffp->start_time != AV_NOPTS_VALUE ? ffp->start_time
-                                                               : 0) /
-                        1000000 <=
-                ((double)ffp->duration / 1000000);
+                    (double)(ffp->start_time != AV_NOPTS_VALUE ? ffp->start_time : 0) /
+                        1000000 <= ((double)ffp->duration / 1000000);
         if (pkt->stream_index == is->audio_stream_index && pkt_in_play_range) {
             packet_queue_put(&is->audioq, pkt);
         } else if (pkt->stream_index == is->video_stream_index &&
-                   pkt_in_play_range &&
-                   !(is->video_st && (is->video_st->disposition &
+                   pkt_in_play_range && !(is->video_st && (is->video_st->disposition &
                                       AV_DISPOSITION_ATTACHED_PIC))) {
             packet_queue_put(&is->videoq, pkt);
-        } else if (pkt->stream_index == is->subtitle_stream_index &&
-                   pkt_in_play_range) {
+        } else if (pkt->stream_index == is->subtitle_stream_index && pkt_in_play_range) {
             packet_queue_put(&is->subtitleq, pkt);
         } else {
             av_packet_unref(pkt);
@@ -4776,7 +4772,6 @@ double ffp_get_master_clock(VideoState *is) { return get_master_clock(is); }
 
 void ffp_toggle_buffering_l(FFPlayer *ffp, int buffering_on) {
     if (!ffp->packet_buffering) return;
-
     VideoState *is = ffp->is;
     if (buffering_on && !is->buffering_on) {
         av_log(ffp, AV_LOG_DEBUG, "ffp_toggle_buffering_l: start\n");

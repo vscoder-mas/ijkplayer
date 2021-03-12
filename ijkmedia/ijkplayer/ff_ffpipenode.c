@@ -74,6 +74,5 @@ int ffpipenode_run_sync(IJKFF_Pipenode *node) {
 
 int ffpipenode_flush(IJKFF_Pipenode *node) {
     if (!node || !node->func_flush) return 0;
-
     return node->func_flush(node);
 }
