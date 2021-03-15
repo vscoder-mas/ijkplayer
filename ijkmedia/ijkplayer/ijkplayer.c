@@ -230,7 +230,6 @@ float ijkmp_get_property_float(IjkMediaPlayer *mp, int id,
 
 void ijkmp_set_property_float(IjkMediaPlayer *mp, int id, float value) {
     assert(mp);
-
     pthread_mutex_lock(&mp->mutex);
     ffp_set_property_float(mp->ffplayer, id, value);
     pthread_mutex_unlock(&mp->mutex);

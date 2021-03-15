@@ -28,8 +28,7 @@
 void J4AC_android_media_AudioTrack__setSpeed(JNIEnv *env, jobject thiz,
                                              jfloat speed) {
     if (J4A_GetSystemAndroidApiLevel(env) < 23) {
-        jint sample_rate =
-            J4AC_android_media_AudioTrack__getSampleRate(env, thiz);
+        jint sample_rate = J4AC_android_media_AudioTrack__getSampleRate(env, thiz);
         if (J4A_ExceptionCheck__throwAny(env)) {
             return;
         }
@@ -39,8 +38,7 @@ void J4AC_android_media_AudioTrack__setSpeed(JNIEnv *env, jobject thiz,
     }
 
     jobject temp = NULL;
-    jobject params =
-        J4AC_android_media_AudioTrack__getPlaybackParams(env, thiz);
+    jobject params = J4AC_android_media_AudioTrack__getPlaybackParams(env, thiz);
     if (J4A_ExceptionCheck__throwAny(env) || !params) goto fail;
 
     temp = J4AC_android_media_PlaybackParams__setSpeed(env, params, speed);

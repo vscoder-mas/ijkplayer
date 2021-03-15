@@ -116,6 +116,7 @@ static int aout_thread_n(JNIEnv *env, SDL_Aout *aout) {
         //如果有设置音量请求，设置音量
         if (opaque->need_set_volume) {
             opaque->need_set_volume = 0;
+            //ffp->pf_playback_volume = volume;
             SDL_Android_AudioTrack_set_volume(env, atrack, opaque->left_volume,
                                               opaque->right_volume);
         }
@@ -147,7 +148,7 @@ static int aout_thread_n(JNIEnv *env, SDL_Aout *aout) {
         }
 
         // TODO: 1 if callback return -1 or 0
-    }
+    } //while (!opaque->abort_request) {
 
     SDL_Android_AudioTrack_free(env, atrack);
     return 0;

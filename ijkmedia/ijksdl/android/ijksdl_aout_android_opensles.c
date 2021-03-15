@@ -138,16 +138,16 @@ static int aout_thread_n(SDL_Aout *aout) {
 
         SDL_LockMutex(opaque->wakeup_mutex);
         if (!opaque->abort_request &&
+            //如果有暂停请求，处理暂停
             (opaque->pause_on || slState.count >= OPENSLES_BUFFERS)) {
             while (!opaque->abort_request &&
                    (opaque->pause_on || slState.count >= OPENSLES_BUFFERS)) {
                 if (!opaque->pause_on) {
                     (*slPlayItf)->SetPlayState(slPlayItf, SL_PLAYSTATE_PLAYING);
                 }
-                SDL_CondWaitTimeout(opaque->wakeup_cond, opaque->wakeup_mutex,
-                                    1000);
-                SLresult slRet =
-                    (*slBufferQueueItf)->GetState(slBufferQueueItf, &slState);
+                //循环超时等待信号
+                SDL_CondWaitTimeout(opaque->wakeup_cond, opaque->wakeup_mutex, 1000);
+                SLresult slRet = (*slBufferQueueItf)->GetState(slBufferQueueItf, &slState);
                 if (slRet != SL_RESULT_SUCCESS) {
                     ALOGE("%s: slBufferQueueItf->GetState() failed\n",
                           __func__);
@@ -157,6 +157,8 @@ static int aout_thread_n(SDL_Aout *aout) {
                 if (opaque->pause_on)
                     (*slPlayItf)->SetPlayState(slPlayItf, SL_PLAYSTATE_PAUSED);
             }
+
+            //恢复播放
             if (!opaque->abort_request && !opaque->pause_on) {
                 (*slPlayItf)->SetPlayState(slPlayItf, SL_PLAYSTATE_PLAYING);
             }
@@ -171,6 +173,7 @@ static int aout_thread_n(SDL_Aout *aout) {
             // FIXME: set volume here
         }
 #endif
+        //如果有设置音量请求，设置音量
         if (opaque->need_set_volume) {
             opaque->need_set_volume = 0;
             SLmillibel level = android_amplification_to_sles(
@@ -187,6 +190,8 @@ static int aout_thread_n(SDL_Aout *aout) {
 
         next_buffer = opaque->buffer + next_buffer_index * bytes_per_buffer;
         next_buffer_index = (next_buffer_index + 1) % OPENSLES_BUFFERS;
+        //找ff_ffplay要录音数据
+        //wanted_spec.callback = sdl_audio_callback;
         audio_cblk(userdata, next_buffer, bytes_per_buffer);
         if (opaque->need_flush) {
             (*slBufferQueueItf)->Clear(slBufferQueueItf);
@@ -198,6 +203,7 @@ static int aout_thread_n(SDL_Aout *aout) {
             opaque->need_flush = 0;
             (*slBufferQueueItf)->Clear(slBufferQueueItf);
         } else {
+            //(*tinyAudio->pcmBufferQueue)->Enqueue(tinyAudio->pcmBufferQueue, tinyAudio->sampleBuffer, buffer_size);
             slRet = (*slBufferQueueItf)->Enqueue(slBufferQueueItf, next_buffer, bytes_per_buffer);
             if (slRet == SL_RESULT_SUCCESS) {
                 // do nothing
@@ -297,7 +303,6 @@ static int aout_open_audio(SDL_Aout *aout, const SDL_AudioSpec *desired,
     SLEngineItf slEngine = opaque->slEngine;
     SLDataFormat_PCM *format_pcm = &opaque->format_pcm;
     int ret = 0;
-
     opaque->spec = *desired;
 
     // config audio src
@@ -361,6 +366,8 @@ static int aout_open_audio(SDL_Aout *aout, const SDL_AudioSpec *desired,
                                   SL_IID_VOLUME, SL_IID_PLAY};
     static const SLboolean req2[] = {SL_BOOLEAN_TRUE, SL_BOOLEAN_TRUE,
                                      SL_BOOLEAN_TRUE};
+
+// (*engineEngine)->CreateAudioPlayer(engineEngine, &pcmPlayerObject, &dataSource, &dataSink, 4, ids, req);                                     
     ret = (*slEngine)->CreateAudioPlayer(
         slEngine, &slPlayerObject, &audio_source, &audio_sink,
         sizeof(ids2) / sizeof(*ids2), ids2, req2);
@@ -383,6 +390,7 @@ static int aout_open_audio(SDL_Aout *aout, const SDL_AudioSpec *desired,
         "failed",
         __func__);
 
+    //(*pcmBufferQueue)->RegisterCallback(pcmBufferQueue, pcm_buffer_callback, this);
     ret = (*opaque->slBufferQueueItf)
               ->RegisterCallback(opaque->slBufferQueueItf,
                                  aout_opensles_callback, (void *)aout);
@@ -394,14 +402,12 @@ static int aout_open_audio(SDL_Aout *aout, const SDL_AudioSpec *desired,
     // SL_PLAYSTATE_PLAYING); CHECK_OPENSL_ERROR(ret, "%s:
     // slBufferQueueItf->slPlayItf() failed", __func__);
 
-    opaque->bytes_per_frame =
-        format_pcm->numChannels * format_pcm->bitsPerSample / 8;
+    opaque->bytes_per_frame = format_pcm->numChannels * format_pcm->bitsPerSample / 8;
     opaque->milli_per_buffer = OPENSLES_BUFLEN;
     opaque->frames_per_buffer = opaque->milli_per_buffer *
                                 format_pcm->samplesPerSec /
                                 1000000;  // samplesPerSec is in milli
-    opaque->bytes_per_buffer =
-        opaque->bytes_per_frame * opaque->frames_per_buffer;
+    opaque->bytes_per_buffer = opaque->bytes_per_frame * opaque->frames_per_buffer;
     opaque->buffer_capacity = OPENSLES_BUFFERS * opaque->bytes_per_buffer;
     ALOGI("OpenSL-ES: bytes_per_frame  = %d bytes\n",
           (int)opaque->bytes_per_frame);

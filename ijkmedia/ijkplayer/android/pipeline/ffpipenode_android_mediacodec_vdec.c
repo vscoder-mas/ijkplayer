@@ -1623,7 +1623,7 @@ static int drain_output_buffer2(JNIEnv *env, IJKFF_Pipenode *node,
                 double dpts = pts;
                 double diff = dpts - ffp_get_master_clock(is);
                 if (!isnan(diff) && fabs(diff) < AV_NOSYNC_THRESHOLD &&
-                    diff - is->frame_last_filter_delay < 0 &&
+                    (diff - is->frame_last_filter_delay) < 0 &&
                     is->viddec.pkt_serial == is->vidclk.serial &&
                     is->videoq.nb_packets) {
                     is->frame_drops_early++;
@@ -1787,7 +1787,7 @@ static int func_run_sync(IJKFF_Pipenode *node) {
                     double dpts = pts;
                     double diff = dpts - ffp_get_master_clock(is);
                     if (!isnan(diff) && fabs(diff) < AV_NOSYNC_THRESHOLD &&
-                        diff - is->frame_last_filter_delay < 0 &&
+                        (diff - is->frame_last_filter_delay) < 0 &&
                         is->viddec.pkt_serial == is->vidclk.serial &&
                         is->videoq.nb_packets) {
                         is->frame_drops_early++;

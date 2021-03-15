@@ -94,9 +94,7 @@ static int find_android_format(int sdl_format) {
 
 typedef struct SDL_Android_AudioTrack {
     jobject thiz;
-
     SDL_Android_AudioTrack_Spec spec;
-
     jbyteArray byte_buffer;
     int byte_buffer_capacity;
     int min_buffer_size;
@@ -317,22 +315,17 @@ int SDL_Android_AudioTrack_reserve_byte_buffer(JNIEnv *env,
 int SDL_Android_AudioTrack_write(JNIEnv *env, SDL_Android_AudioTrack *atrack,
                                  uint8_t *data, int size_in_byte) {
     if (size_in_byte <= 0) return size_in_byte;
-
-    int reserved =
-        SDL_Android_AudioTrack_reserve_byte_buffer(env, atrack, size_in_byte);
+    int reserved = SDL_Android_AudioTrack_reserve_byte_buffer(env, atrack, size_in_byte);
     if (reserved < size_in_byte) {
         ALOGE("%s failed %d < %d\n", __func__, reserved, size_in_byte);
         return -1;
     }
 
-    (*env)->SetByteArrayRegion(env, atrack->byte_buffer, 0, (int)size_in_byte,
-                               (jbyte *)data);
+    (*env)->SetByteArrayRegion(env, atrack->byte_buffer, 0, (int)size_in_byte, (jbyte *)data);
     if (J4A_ExceptionCheck__catchAll(env)) return -1;
-
     int retval = J4AC_AudioTrack__write(env, atrack->thiz, atrack->byte_buffer,
                                         0, (int)size_in_byte);
     if (J4A_ExceptionCheck__catchAll(env)) return -1;
-
     return retval;
 }
 

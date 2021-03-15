@@ -453,7 +453,6 @@ static void ijkMediaPlayer_setPropertyFloat(JNIEnv *env, jobject thiz, jint id,
     IjkMediaPlayer *mp = jni_get_media_player(env, thiz);
     JNI_CHECK_GOTO(mp, env, NULL, "mpjni: setPropertyFloat: null mp",
                    LABEL_RETURN);
-
     ijkmp_set_property_float(mp, id, value);
 
 LABEL_RETURN:

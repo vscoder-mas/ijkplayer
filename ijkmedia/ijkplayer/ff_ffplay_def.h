@@ -511,7 +511,6 @@ typedef struct FFTrackCacheStatistic {
 
 typedef struct FFStatistic {
     int64_t vdec_type;
-
     float vfps;
     float vdps;
     float avdelay;

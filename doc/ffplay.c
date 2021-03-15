@@ -2734,7 +2734,8 @@ static void sdl_audio_callback(void *opaque, Uint8 *stream, int len) {
             len1 = len;
 
         // 2. 将转换后的音频数据拷贝到音频缓冲区stream中，之后的播放就是音频设备驱动程序的工作了
-        //输出audio_buf到stream，如果audio_volume为最大音量，则只需memcpy复制给stream即可;否则，可以利用SDL_MixAudioFormat进行音量调整和混音
+        //输出audio_buf到stream，如果audio_volume为最大音量，则只需memcpy复制给stream即可
+        //否则，可以利用SDL_MixAudioFormat进行音量调整和混音
         if (!is->muted && is->audio_buf && is->audio_volume == SDL_MIX_MAXVOLUME) {
             memcpy(stream, (uint8_t *)is->audio_buf + is->audio_buf_index, len1);
         } else {

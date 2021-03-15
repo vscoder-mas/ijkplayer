@@ -23,7 +23,6 @@
 
 typedef struct J4AC_android_media_PlaybackParams {
     jclass id;
-
     jmethodID method_setSpeed;
 } J4AC_android_media_PlaybackParams;
 static J4AC_android_media_PlaybackParams
