@@ -196,7 +196,7 @@ static ssize_t SDL_AMediaCodecJava_writeInputData(SDL_AMediaCodec *acodec,
     }
 
     SDL_AMediaCodec_Opaque *opaque = (SDL_AMediaCodec_Opaque *)acodec->opaque;
-    //ByteBuffer byteBuffer = videoCodec.getInputBuffers()[inputBufferIndex];
+    //tinysoft ByteBuffer byteBuffer = videoCodec.getInputBuffers()[inputBufferIndex];
     input_buffer_array = J4AC_MediaCodec__getInputBuffers__catchAll(
         env, opaque->android_media_codec);
     if (!input_buffer_array) return -1;
@@ -295,13 +295,15 @@ ssize_t SDL_AMediaCodecJava_dequeueOutputBuffer(SDL_AMediaCodec *acodec,
     SDL_AMediaCodec_Opaque *opaque = (SDL_AMediaCodec_Opaque *)acodec->opaque;
     jobject android_media_codec = opaque->android_media_codec;
     if (!opaque->output_buffer_info) {
-        opaque->output_buffer_info =
-            J4AC_MediaCodec__BufferInfo__BufferInfo__asGlobalRef__catchAll(env);
-        if (!opaque->output_buffer_info) return AMEDIACODEC__UNKNOWN_ERROR;
+        opaque->output_buffer_info = J4AC_MediaCodec__BufferInfo__BufferInfo__asGlobalRef__catchAll(env);
+        if (!opaque->output_buffer_info) {
+            return AMEDIACODEC__UNKNOWN_ERROR;
+        }
     }
 
     jint idx = AMEDIACODEC__UNKNOWN_ERROR;
     while (1) {
+        //tinysoft
         //int outputBufferIndex = videoCodec.dequeueOutputBuffer(videoBufferInfo, 10);
         idx = J4AC_MediaCodec__dequeueOutputBuffer(env, android_media_codec,
                                                    opaque->output_buffer_info,
@@ -319,14 +321,13 @@ ssize_t SDL_AMediaCodecJava_dequeueOutputBuffer(SDL_AMediaCodec *acodec,
             AMCTRACE("%s: buffer ready (%d) ====================\n", __func__,
                      idx);
             if (info) {
+                //tinysoft
                 //videoBufferInfo.offset, videoBufferInfo.size, videoBufferInfo.flags, videoBufferInfo.presentationTimeUs
-                info->offset =
-                    J4AC_MediaCodec__BufferInfo__offset__get__catchAll(
+                info->offset = J4AC_MediaCodec__BufferInfo__offset__get__catchAll(
                         env, opaque->output_buffer_info);
                 info->size = J4AC_MediaCodec__BufferInfo__size__get__catchAll(
                     env, opaque->output_buffer_info);
-                info->presentationTimeUs =
-                    J4AC_MediaCodec__BufferInfo__presentationTimeUs__get__catchAll(
+                info->presentationTimeUs = J4AC_MediaCodec__BufferInfo__presentationTimeUs__get__catchAll(
                         env, opaque->output_buffer_info);
                 info->flags = J4AC_MediaCodec__BufferInfo__flags__get__catchAll(
                     env, opaque->output_buffer_info);

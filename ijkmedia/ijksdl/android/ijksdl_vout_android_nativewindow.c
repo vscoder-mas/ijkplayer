@@ -83,10 +83,8 @@ typedef struct SDL_Vout_Opaque {
     SDL_AMediaCodec *acodec;
     int null_native_window_warned;  // reduce log for null window
     int next_buffer_id;
-
     ISDL_Array overlay_manager;
     ISDL_Array overlay_pool;
-
     IJK_EGL *egl;
 } SDL_Vout_Opaque;
 
@@ -97,16 +95,14 @@ static SDL_VoutOverlay *func_create_overlay_l(int width, int height,
         case IJK_AV_PIX_FMT__ANDROID_MEDIACODEC:
             return SDL_VoutAMediaCodec_CreateOverlay(width, height, vout);
         default:
-            return SDL_VoutFFmpeg_CreateOverlay(width, height, frame_format,
-                                                vout);
+            return SDL_VoutFFmpeg_CreateOverlay(width, height, frame_format, vout);
     }
 }
 
 static SDL_VoutOverlay *func_create_overlay(int width, int height,
                                             int frame_format, SDL_Vout *vout) {
     SDL_LockMutex(vout->mutex);
-    SDL_VoutOverlay *overlay =
-        func_create_overlay_l(width, height, frame_format, vout);
+    SDL_VoutOverlay *overlay = func_create_overlay_l(width, height, frame_format, vout);
     SDL_UnlockMutex(vout->mutex);
     return overlay;
 }
@@ -198,6 +194,8 @@ static int func_display_overlay_l(SDL_Vout *vout, SDL_VoutOverlay *overlay) {
     return SDL_Android_NativeWindow_display_l(native_window, overlay);
 }
 
+//SDL_Vout表示一个显示上下文，或者理解为一块画布。比较接近于SDL中的Render
+//SDL_VoutOverlay表示显示层，或者理解为一块图像数据。比较接近于SDL中的Texture
 static int func_display_overlay(SDL_Vout *vout, SDL_VoutOverlay *overlay) {
     SDL_LockMutex(vout->mutex);
     int retval = func_display_overlay_l(vout, overlay);
@@ -353,7 +351,6 @@ SDL_AMediaCodecBufferProxy *SDL_VoutAndroid_obtainBufferProxy(
 static int SDL_VoutAndroid_releaseBufferProxy_l(
     SDL_Vout *vout, SDL_AMediaCodecBufferProxy *proxy, bool render) {
     SDL_Vout_Opaque *opaque = vout->opaque;
-
     if (!proxy) return 0;
 
     AMCTRACE("%s: [%d] -------- proxy %d: vout: %d idx: %d render: %s fake: %s",

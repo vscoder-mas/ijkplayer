@@ -89,7 +89,6 @@ void SDL_AMediaCodec_increaseReference(SDL_AMediaCodec* acodec) {
 
 void SDL_AMediaCodec_decreaseReference(SDL_AMediaCodec* acodec) {
     if (!acodec) return;
-
     int ref_count = __sync_sub_and_fetch(&acodec->ref_count, 1);
     ALOGD("%s(): ref=%d\n", __func__, ref_count);
     if (ref_count == 0) {
@@ -102,7 +101,6 @@ void SDL_AMediaCodec_decreaseReference(SDL_AMediaCodec* acodec) {
 
 void SDL_AMediaCodec_decreaseReferenceP(SDL_AMediaCodec** acodec) {
     if (!acodec) return;
-
     SDL_AMediaCodec_decreaseReference(*acodec);
     *acodec = NULL;
 }

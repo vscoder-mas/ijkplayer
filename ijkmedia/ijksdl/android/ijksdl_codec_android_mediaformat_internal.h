@@ -29,8 +29,7 @@
 
 inline static SDL_AMediaFormat *SDL_AMediaFormat_CreateInternal(
     size_t opaque_size) {
-    SDL_AMediaFormat *aformat =
-        (SDL_AMediaFormat *)mallocz(sizeof(SDL_AMediaFormat));
+    SDL_AMediaFormat *aformat = (SDL_AMediaFormat *)mallocz(sizeof(SDL_AMediaFormat));
     if (!aformat) return NULL;
 
     aformat->opaque = mallocz(opaque_size);

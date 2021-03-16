@@ -734,9 +734,7 @@ static Frame *frame_queue_peek_writable(FrameQueue *f) {
         SDL_CondWait(f->cond, f->mutex);
     }
     SDL_UnlockMutex(f->mutex);
-
     if (f->pktq->abort_request) return NULL;
-
     return &f->queue[f->windex];
 }
 
@@ -878,8 +876,7 @@ static void video_image_display2(FFPlayer *ffp) {
             if (frame_queue_nb_remaining(&is->subpq) > 0) {
                 sp = frame_queue_peek(&is->subpq);
 
-                if (vp->pts >=
-                    sp->pts + ((float)sp->sub.start_display_time / 1000)) {
+                if (vp->pts >= sp->pts + ((float)sp->sub.start_display_time / 1000)) {
                     if (!sp->uploaded) {
                         if (sp->sub.num_rects > 0) {
                             char buffered_text[4096];
@@ -910,6 +907,8 @@ static void video_image_display2(FFPlayer *ffp) {
                 SDL_Delay(20);
             }
         }
+
+        //Frame->SDL_VoutOverlay 持有需显示的信息
         SDL_VoutDisplayYUVOverlay(ffp->vout, vp->bmp);
         ffp->stat.vfps = SDL_SpeedSamplerAdd(
             &ffp->vfps_sampler, FFP_SHOW_VFPS_FFPLAY, "vfps[ffplay]");
@@ -1318,8 +1317,7 @@ static void video_refresh(FFPlayer *opaque, double *remaining_time) {
         check_external_clock_speed(is);
     }
 
-    if (!ffp->display_disable && is->show_mode != SHOW_MODE_VIDEO &&
-        is->audio_st) {
+    if (!ffp->display_disable && is->show_mode != SHOW_MODE_VIDEO && is->audio_st) {
         time = av_gettime_relative() / 1000000.0;
         if (is->force_refresh || is->last_vis_time + ffp->rdftspeed < time) {
             video_display2(ffp);
@@ -1353,13 +1351,11 @@ static void video_refresh(FFPlayer *opaque, double *remaining_time) {
             /* compute nominal last_duration */
             last_duration = vp_duration(is, lastvp, vp);
             delay = compute_target_delay(ffp, last_duration, is);
-
             time = av_gettime_relative() / 1000000.0;
             if (isnan(is->frame_timer) || time < is->frame_timer)
                 is->frame_timer = time;
             if (time < is->frame_timer + delay) {
-                *remaining_time =
-                    FFMIN(is->frame_timer + delay - time, *remaining_time);
+                *remaining_time = FFMIN(is->frame_timer + delay - time, *remaining_time);
                 goto display;
             }
 
@@ -1385,6 +1381,7 @@ static void video_refresh(FFPlayer *opaque, double *remaining_time) {
                 }
             }
 
+            //字幕逻辑
             if (is->subtitle_st) {
                 while (frame_queue_nb_remaining(&is->subpq) > 0) {
                     sp = frame_queue_peek(&is->subpq);
@@ -1671,6 +1668,8 @@ static int queue_picture(FFPlayer *ffp, AVFrame *src_frame, double pts,
 
         /* the allocation must be done in the main thread to avoid
            locking problems. */
+        //内部调用vp = &is->pictq.queue[is->pictq.windex];等同于vp = frame_queue_peek_writable(&is->pictq)
+        //alloc_picture内部对vp->bmp已赋值初始化
         alloc_picture(ffp, src_frame->format);
         if (is->videoq.abort_request) return -1;
     }
@@ -1693,8 +1692,7 @@ static int queue_picture(FFPlayer *ffp, AVFrame *src_frame, double pts,
 #endif
         // FIXME: set swscale options
         if (SDL_VoutFillFrameYUVOverlay(vp->bmp, src_frame) < 0) {
-            av_log(NULL, AV_LOG_FATAL,
-                   "Cannot initialize the conversion context\n");
+            av_log(NULL, AV_LOG_FATAL, "Cannot initialize the conversion context\n");
             exit(1);
         }
         /* update the bitmap content */

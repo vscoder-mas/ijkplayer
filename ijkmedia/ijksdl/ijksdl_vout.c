@@ -56,7 +56,6 @@ int SDL_VoutDisplayYUVOverlay(SDL_Vout *vout, SDL_VoutOverlay *overlay) {
 
 int SDL_VoutSetOverlayFormat(SDL_Vout *vout, Uint32 overlay_format) {
     if (!vout) return -1;
-
     vout->overlay_format = overlay_format;
     return 0;
 }
@@ -99,6 +98,5 @@ void SDL_VoutUnrefYUVOverlay(SDL_VoutOverlay *overlay) {
 int SDL_VoutFillFrameYUVOverlay(SDL_VoutOverlay *overlay,
                                 const AVFrame *frame) {
     if (!overlay || !overlay->func_fill_frame) return -1;
-
     return overlay->func_fill_frame(overlay, frame);
 }

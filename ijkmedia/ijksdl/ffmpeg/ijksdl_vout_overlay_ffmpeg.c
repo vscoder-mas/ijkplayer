@@ -38,13 +38,13 @@
 struct SDL_VoutOverlay_Opaque {
     SDL_mutex *mutex;
     AVFrame *managed_frame;
+    //缓存frame变量
     AVBufferRef *frame_buffer;
     int planes;
     AVFrame *linked_frame;
 
     Uint16 pitches[AV_NUM_DATA_POINTERS];
     Uint8 *pixels[AV_NUM_DATA_POINTERS];
-
     int no_neon_warned;
     struct SwsContext *img_convert_ctx;
     int sws_flags;
@@ -90,9 +90,12 @@ static AVFrame *opaque_setup_frame(SDL_VoutOverlay_Opaque *opaque,
 
 static AVFrame *opaque_obtain_managed_frame_buffer(
     SDL_VoutOverlay_Opaque *opaque) {
-    if (opaque->frame_buffer != NULL) return opaque->managed_frame;
+    if (opaque->frame_buffer != NULL) {
+        return opaque->managed_frame;
+    }
 
     /*
+        tinysoft
         AVFrame *pFrameYUV420P = av_frame_alloc();
         int num = av_image_get_buffer_size(
             AV_PIX_FMT_YUV420P,
@@ -115,6 +118,16 @@ static AVFrame *opaque_obtain_managed_frame_buffer(
     AVBufferRef *frame_buffer_ref = av_buffer_alloc(frame_bytes);
     if (!frame_buffer_ref) return NULL;
 
+    // tinysoft
+    // uint8_t *buffer = static_cast<uint8_t *>(av_malloc(num * sizeof(uint8_t)));
+    // av_image_fill_arrays(
+    //         pFrameYUV420P->data,
+    //         pFrameYUV420P->linesize,
+    //         buffer,
+    //         AV_PIX_FMT_YUV420P,
+    //         video->avCodecContext->width,
+    //         video->avCodecContext->height,
+    //         1);
     av_image_fill_arrays(managed_frame->data, managed_frame->linesize,
                          frame_buffer_ref->data, managed_frame->format,
                          managed_frame->width, managed_frame->height, 1);
@@ -257,6 +270,9 @@ static int func_fill_frame(SDL_VoutOverlay *overlay, const AVFrame *frame) {
      (int)(const uint8_t**) frame->data,
      (int)frame->linesize);
      */
+
+    //3. 执行填充动作;对于use_linked_frame引用frame后即已填充好
+    //否则需要用sws_scale转化到目标格式(可能是为了方便opengl绘图)
     if (use_linked_frame) {
         // do nothing
     } else if (ijk_image_convert(frame->width, frame->height, dst_format,
@@ -272,6 +288,15 @@ static int func_fill_frame(SDL_VoutOverlay *overlay, const AVFrame *frame) {
             return -1;
         }
 
+        // tinysoft
+        // sws_scale(
+        //         sws_ctx,
+        //         reinterpret_cast<const uint8_t *const *>(avFrame->data),
+        //         avFrame->linesize,
+        //         0,
+        //         avFrame->height,
+        //         pFrameYUV420P->data,
+        //         pFrameYUV420P->linesize);
         sws_scale(opaque->img_convert_ctx, (const uint8_t **)frame->data,
                   frame->linesize, 0, frame->height, swscale_dst_pic.data,
                   swscale_dst_pic.linesize);

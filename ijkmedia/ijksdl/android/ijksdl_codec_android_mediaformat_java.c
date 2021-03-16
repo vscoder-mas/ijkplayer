@@ -196,8 +196,7 @@ SDL_AMediaFormat *SDL_AMediaFormatJava_createVideoFormat(JNIEnv *env,
                                                          int height) {
     SDLTRACE("%s", __func__);
 
-    jobject android_media_format =
-        J4AC_MediaFormat__createVideoFormat__withCString__asGlobalRef__catchAll(
+    jobject android_media_format = J4AC_MediaFormat__createVideoFormat__withCString__asGlobalRef__catchAll(
             env, mime, width, height);
     if (J4A_ExceptionCheck__catchAll(env) || !android_media_format) {
         return NULL;

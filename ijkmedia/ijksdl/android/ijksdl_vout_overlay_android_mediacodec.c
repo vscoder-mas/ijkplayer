@@ -40,7 +40,6 @@
 
 typedef struct SDL_VoutOverlay_Opaque {
     SDL_mutex *mutex;
-
     SDL_Vout *vout;
     SDL_AMediaCodec *acodec;
     //用于保存mediacodec解码后的buffer_index和bufferinfo
@@ -116,7 +115,6 @@ static int func_fill_frame(SDL_VoutOverlay *overlay, const AVFrame *frame) {
     // TODO: ref-count buffer_proxy?
     //frame->opaque 保存 SDL_AMediaCodecBufferProxy bufferinfo
     opaque->buffer_proxy = (SDL_AMediaCodecBufferProxy *)frame->opaque;
-
     overlay->opaque_class = &g_vout_overlay_amediacodec_class;
     overlay->format = SDL_FCC__AMC;
     overlay->planes = 1;
@@ -125,7 +123,6 @@ static int func_fill_frame(SDL_VoutOverlay *overlay, const AVFrame *frame) {
     overlay->pitches[0] = 0;
     overlay->pitches[1] = 0;
     overlay->is_private = 1;
-
     overlay->w = (int)frame->width;
     overlay->h = (int)frame->height;
     return 0;
@@ -147,7 +144,6 @@ SDL_VoutOverlay *SDL_VoutAMediaCodec_CreateOverlay(int width, int height,
     opaque->vout = vout;
     opaque->acodec = NULL;
     opaque->buffer_proxy = NULL;
-
     overlay->opaque_class = &g_vout_overlay_amediacodec_class;
     overlay->format = SDL_FCC__AMC;
     overlay->pitches = opaque->pitches;
@@ -155,7 +151,6 @@ SDL_VoutOverlay *SDL_VoutAMediaCodec_CreateOverlay(int width, int height,
     overlay->w = width;
     overlay->h = height;
     overlay->is_private = 1;
-
     overlay->free_l = overlay_free_l;
     overlay->lock = overlay_lock;
     overlay->unlock = overlay_unlock;
@@ -182,7 +177,6 @@ int SDL_VoutOverlayAMediaCodec_releaseFrame_l(SDL_VoutOverlay *overlay,
                                               SDL_AMediaCodec *acodec,
                                               bool render) {
     if (!check_object(overlay, __func__)) return -1;
-
     SDL_VoutOverlay_Opaque *opaque = overlay->opaque;
     return SDL_VoutAndroid_releaseBufferProxyP_l(opaque->vout,
                                                  &opaque->buffer_proxy, render);

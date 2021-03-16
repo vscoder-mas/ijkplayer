@@ -40,11 +40,12 @@ struct SDL_VoutOverlay {
     Uint32 format;   /**< Read-only */
     int planes;      /**< Read-only */
     //最终显示的数据源
+    // SDL_VoutOverlay_Opaque->pitches[AV_NUM_DATA_POINTERS];
+    // SDL_VoutOverlay_Opaque->*pixels[AV_NUM_DATA_POINTERS];
     Uint16 *pitches; /**< in bytes, Read-only */
     Uint8 **pixels;  /**< Read-write */
 
     int is_private;
-
     int sar_num;
     int sar_den;
 
